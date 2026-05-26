@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AccountRouteImport } from './routes/account'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AccountSessionsRouteImport } from './routes/account/sessions'
+import { Route as AccountSecurityRouteImport } from './routes/account/security'
+import { Route as AccountProfileRouteImport } from './routes/account/profile'
+import { Route as AccountDataRouteImport } from './routes/account/data'
 import { Route as AuthSignUpRouteImport } from './routes/_auth/sign-up'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
+import { Route as AuthMagicRouteImport } from './routes/_auth/magic'
 import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-password'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as AppInvitationsRouteImport } from './routes/_app/invitations'
@@ -68,6 +74,11 @@ import { Route as AppAuthApiSecretsRouteImport } from './routes/_app/auth/api/se
 import { Route as AppAuthApiMachineIdentitiesRouteImport } from './routes/_app/auth/api/machine-identities'
 import { Route as AppAuthApiKeysRouteImport } from './routes/_app/auth/api/keys'
 
+const AccountRoute = AccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/_auth',
   getParentRoute: () => rootRouteImport,
@@ -81,6 +92,26 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AccountSessionsRoute = AccountSessionsRouteImport.update({
+  id: '/sessions',
+  path: '/sessions',
+  getParentRoute: () => AccountRoute,
+} as any)
+const AccountSecurityRoute = AccountSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => AccountRoute,
+} as any)
+const AccountProfileRoute = AccountProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AccountRoute,
+} as any)
+const AccountDataRoute = AccountDataRouteImport.update({
+  id: '/data',
+  path: '/data',
+  getParentRoute: () => AccountRoute,
+} as any)
 const AuthSignUpRoute = AuthSignUpRouteImport.update({
   id: '/sign-up',
   path: '/sign-up',
@@ -89,6 +120,11 @@ const AuthSignUpRoute = AuthSignUpRouteImport.update({
 const AuthSignInRoute = AuthSignInRouteImport.update({
   id: '/sign-in',
   path: '/sign-in',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthMagicRoute = AuthMagicRouteImport.update({
+  id: '/magic',
+  path: '/magic',
   getParentRoute: () => AuthRoute,
 } as any)
 const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
@@ -375,6 +411,7 @@ const AppAuthApiKeysRoute = AppAuthApiKeysRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/account': typeof AccountRouteWithChildren
   '/$': typeof AppSplatRoute
   '/activity': typeof AppActivityRoute
   '/analytics': typeof AppAnalyticsRoute
@@ -383,8 +420,13 @@ export interface FileRoutesByFullPath {
   '/invitations': typeof AppInvitationsRoute
   '/users': typeof AppUsersRouteWithChildren
   '/forgot-password': typeof AuthForgotPasswordRoute
+  '/magic': typeof AuthMagicRoute
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
+  '/account/data': typeof AccountDataRoute
+  '/account/profile': typeof AccountProfileRoute
+  '/account/security': typeof AccountSecurityRoute
+  '/account/sessions': typeof AccountSessionsRoute
   '/access/permissions': typeof AppAccessPermissionsRoute
   '/access/policies': typeof AppAccessPoliciesRoute
   '/access/resources': typeof AppAccessResourcesRoute
@@ -433,6 +475,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/account': typeof AccountRouteWithChildren
   '/$': typeof AppSplatRoute
   '/activity': typeof AppActivityRoute
   '/analytics': typeof AppAnalyticsRoute
@@ -441,8 +484,13 @@ export interface FileRoutesByTo {
   '/invitations': typeof AppInvitationsRoute
   '/users': typeof AppUsersRouteWithChildren
   '/forgot-password': typeof AuthForgotPasswordRoute
+  '/magic': typeof AuthMagicRoute
   '/sign-in': typeof AuthSignInRoute
   '/sign-up': typeof AuthSignUpRoute
+  '/account/data': typeof AccountDataRoute
+  '/account/profile': typeof AccountProfileRoute
+  '/account/security': typeof AccountSecurityRoute
+  '/account/sessions': typeof AccountSessionsRoute
   '/access/permissions': typeof AppAccessPermissionsRoute
   '/access/policies': typeof AppAccessPoliciesRoute
   '/access/resources': typeof AppAccessResourcesRoute
@@ -494,6 +542,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
   '/_auth': typeof AuthRouteWithChildren
+  '/account': typeof AccountRouteWithChildren
   '/_app/$': typeof AppSplatRoute
   '/_app/activity': typeof AppActivityRoute
   '/_app/analytics': typeof AppAnalyticsRoute
@@ -502,8 +551,13 @@ export interface FileRoutesById {
   '/_app/invitations': typeof AppInvitationsRoute
   '/_app/users': typeof AppUsersRouteWithChildren
   '/_auth/forgot-password': typeof AuthForgotPasswordRoute
+  '/_auth/magic': typeof AuthMagicRoute
   '/_auth/sign-in': typeof AuthSignInRoute
   '/_auth/sign-up': typeof AuthSignUpRoute
+  '/account/data': typeof AccountDataRoute
+  '/account/profile': typeof AccountProfileRoute
+  '/account/security': typeof AccountSecurityRoute
+  '/account/sessions': typeof AccountSessionsRoute
   '/_app/access/permissions': typeof AppAccessPermissionsRoute
   '/_app/access/policies': typeof AppAccessPoliciesRoute
   '/_app/access/resources': typeof AppAccessResourcesRoute
@@ -554,6 +608,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/account'
     | '/$'
     | '/activity'
     | '/analytics'
@@ -562,8 +617,13 @@ export interface FileRouteTypes {
     | '/invitations'
     | '/users'
     | '/forgot-password'
+    | '/magic'
     | '/sign-in'
     | '/sign-up'
+    | '/account/data'
+    | '/account/profile'
+    | '/account/security'
+    | '/account/sessions'
     | '/access/permissions'
     | '/access/policies'
     | '/access/resources'
@@ -612,6 +672,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/account'
     | '/$'
     | '/activity'
     | '/analytics'
@@ -620,8 +681,13 @@ export interface FileRouteTypes {
     | '/invitations'
     | '/users'
     | '/forgot-password'
+    | '/magic'
     | '/sign-in'
     | '/sign-up'
+    | '/account/data'
+    | '/account/profile'
+    | '/account/security'
+    | '/account/sessions'
     | '/access/permissions'
     | '/access/policies'
     | '/access/resources'
@@ -672,6 +738,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_app'
     | '/_auth'
+    | '/account'
     | '/_app/$'
     | '/_app/activity'
     | '/_app/analytics'
@@ -680,8 +747,13 @@ export interface FileRouteTypes {
     | '/_app/invitations'
     | '/_app/users'
     | '/_auth/forgot-password'
+    | '/_auth/magic'
     | '/_auth/sign-in'
     | '/_auth/sign-up'
+    | '/account/data'
+    | '/account/profile'
+    | '/account/security'
+    | '/account/sessions'
     | '/_app/access/permissions'
     | '/_app/access/policies'
     | '/_app/access/resources'
@@ -733,10 +805,18 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AppRoute: typeof AppRouteWithChildren
   AuthRoute: typeof AuthRouteWithChildren
+  AccountRoute: typeof AccountRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/account': {
+      id: '/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AccountRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_auth': {
       id: '/_auth'
       path: ''
@@ -758,6 +838,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/account/sessions': {
+      id: '/account/sessions'
+      path: '/sessions'
+      fullPath: '/account/sessions'
+      preLoaderRoute: typeof AccountSessionsRouteImport
+      parentRoute: typeof AccountRoute
+    }
+    '/account/security': {
+      id: '/account/security'
+      path: '/security'
+      fullPath: '/account/security'
+      preLoaderRoute: typeof AccountSecurityRouteImport
+      parentRoute: typeof AccountRoute
+    }
+    '/account/profile': {
+      id: '/account/profile'
+      path: '/profile'
+      fullPath: '/account/profile'
+      preLoaderRoute: typeof AccountProfileRouteImport
+      parentRoute: typeof AccountRoute
+    }
+    '/account/data': {
+      id: '/account/data'
+      path: '/data'
+      fullPath: '/account/data'
+      preLoaderRoute: typeof AccountDataRouteImport
+      parentRoute: typeof AccountRoute
+    }
     '/_auth/sign-up': {
       id: '/_auth/sign-up'
       path: '/sign-up'
@@ -770,6 +878,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-in'
       fullPath: '/sign-in'
       preLoaderRoute: typeof AuthSignInRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/magic': {
+      id: '/_auth/magic'
+      path: '/magic'
+      fullPath: '/magic'
+      preLoaderRoute: typeof AuthMagicRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_auth/forgot-password': {
@@ -1271,22 +1386,42 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface AuthRouteChildren {
   AuthForgotPasswordRoute: typeof AuthForgotPasswordRoute
+  AuthMagicRoute: typeof AuthMagicRoute
   AuthSignInRoute: typeof AuthSignInRoute
   AuthSignUpRoute: typeof AuthSignUpRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
   AuthForgotPasswordRoute: AuthForgotPasswordRoute,
+  AuthMagicRoute: AuthMagicRoute,
   AuthSignInRoute: AuthSignInRoute,
   AuthSignUpRoute: AuthSignUpRoute,
 }
 
 const AuthRouteWithChildren = AuthRoute._addFileChildren(AuthRouteChildren)
 
+interface AccountRouteChildren {
+  AccountDataRoute: typeof AccountDataRoute
+  AccountProfileRoute: typeof AccountProfileRoute
+  AccountSecurityRoute: typeof AccountSecurityRoute
+  AccountSessionsRoute: typeof AccountSessionsRoute
+}
+
+const AccountRouteChildren: AccountRouteChildren = {
+  AccountDataRoute: AccountDataRoute,
+  AccountProfileRoute: AccountProfileRoute,
+  AccountSecurityRoute: AccountSecurityRoute,
+  AccountSessionsRoute: AccountSessionsRoute,
+}
+
+const AccountRouteWithChildren =
+  AccountRoute._addFileChildren(AccountRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AppRoute: AppRouteWithChildren,
   AuthRoute: AuthRouteWithChildren,
+  AccountRoute: AccountRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
