@@ -55,13 +55,15 @@ function ActivityPage() {
   // a glance. The ref intentionally only writes once — refreshing the
   // browser is the way to reset.
   const seenSinceRef = useRef<string | null>(null);
+  // Backend may return `{ items: null }` for empty result sets (Go nil
+  // slice → JSON null); coerce before indexing so we don't crash on
+  // null[0]. The `?? []` further down handles the same case at render.
+  const items = eventsQ.data?.items ?? [];
   if (eventsQ.data && seenSinceRef.current === null) {
-    const newest = eventsQ.data.items[0]?.created_at;
+    const newest = items[0]?.created_at;
     if (newest) seenSinceRef.current = newest;
   }
   const seenSince = seenSinceRef.current;
-
-  const items = eventsQ.data?.items ?? [];
   const newCount = useMemo(
     () => items.filter((e) => seenSince && e.created_at > seenSince).length,
     [items, seenSince],
