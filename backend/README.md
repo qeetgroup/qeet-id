@@ -5,74 +5,125 @@ single Postgres database with one schema per bounded context. Each context
 ships an outbox so it can be peeled off into its own service later without
 rewriting business logic.
 
+## Quick start
+
+```bash
+docker compose up -d postgres      # Postgres on :5001
+cp .env.example .env               # if you don't have a .env yet
+make migrate-up                    # apply DB migrations (needs golang-migrate CLI)
+make seed-reset                    # fill the DB with demo data (see below)
+make run                           # start the API on :4001
+```
+
+Then open the admin UI and log in (see credentials under **Seed demo data**).
+
+## Seed demo data
+
+The fastest way to see the app with real content. It creates two workspaces,
+users, roles, groups, API keys, webhooks, SSO providers, branding, a policy,
+and some login/audit history — using the app's own code, so logins actually
+work and the audit log is properly hash-chained.
+
+```bash
+make seed-reset   # wipe (dev only) + load a clean demo dataset
+make seed         # add demo data without wiping (use seed-reset if it already exists)
+```
+
+**Every seeded account uses the same password: `Password123!`**
+
+| Email | Workspace | Role | Notes |
+| --- | --- | --- | --- |
+| `owner@acme.test` | Acme + Globex | owner | owns both — use it to try the workspace switcher |
+| `alice@acme.test` | Acme | admin | |
+| `bob@acme.test` | Acme | member | |
+| `carol@acme.test` | Acme | member | |
+| `dave@acme.test` | Acme | member | |
+| `erin@globex.test` | Globex | member | |
+
+Workspaces: **Acme Inc** (`acme`) and **Globex Corp** (`globex`).
+
+The seed also prints two one-time API-key tokens (`qk_…`) in its output if you
+want to test API-key auth (the plaintext secret is only shown once).
+
+## How signup / workspaces work
+
+- **Signup creates no tenant.** A new user is a tenant-less identity and lands
+  on a "create your first workspace" screen.
+- **Creating a workspace makes you its owner** (owner role + all permissions)
+  and switches you into it. A user can belong to many workspaces; membership is
+  expressed by `rbac.user_roles`, and the Users list shows a workspace's members.
+- **Switching workspaces** mints a fresh token scoped to that tenant
+  (`POST /v1/auth/switch-tenant`). Login is `email` + `password` only.
+
 ## Layout
 
 ```
-cmd/server/             # main.go — wires every module
+cmd/
+  server/               # main.go — process lifecycle; buildDeps() wires modules
+  seed/                 # `make seed` demo-data loader
 internal/
-  config/               # envconfig
+  config/               # envconfig (DB, JWT, APP_BASE_URL, …)
   platform/
     db/                 # pgx pool
     errs/               # error vocabulary
-    httpx/              # response, auth, principal, middleware
-    logger/             # coloured slog handler for dev
-    outbox/             # transactional outbox + log publisher
-    password/           # bcrypt
-    tokens/             # access (JWT) + refresh (opaque) tokens
-  audit/                # audit.events writer
-  tenant/               # tenant.tenants
-  user/                 # "user".users + password credential
-  auth/                 # login / refresh / logout / sessions
-  rbac/                 # permissions, roles, assignments, check
+    pgxerr/             # map Postgres errors -> domain errors (IsUnique, …)
+    dbutil/             # shared repo helpers: JSONB decode + UPDATE builder
+    httpx/              # response, auth, principal, RequireTenant/RequireUser
+    paging/             # opaque keyset cursors
+    worker/             # Supervisor: start/stop background workers
+    logger/ outbox/ password/ tokens/ ratelimit/ notifier/ codes/ health/
+    sqlcgen/            # GENERATED sqlc pilot (unused template — see sqlc/)
+  audit/                # hash-chained audit.events writer + Actor helper
+  tenant/ user/ auth/   # tenants, users, login/refresh/logout/sessions
+  rbac/                 # permissions, roles, assignments, check (+ Service)
+  group/ webhook/ social/ apikey/ branding/ policy/ invite/ recovery/
+  mfa/ oidc/ passkey/ verification/ gdpr/ analytics/ principal/
   http/                 # chi router that mounts every handler
 migrations/             # sql, paired up/down
-api/openapi.yaml        # placeholder per-context API spec
+sqlc/                   # sqlc.yaml inputs (schema snapshot + queries)
+test/integration/       # testcontainers-backed integration tests
+api/openapi.yaml        # per-context API spec
 ```
 
-## Run locally
+## Common commands
 
-```bash
-# Start Postgres only and run the server on the host
-docker compose up -d postgres
-cp .env.example .env
-make migrate-up           # needs `migrate` CLI (golang-migrate)
-make run
+| Command | What it does |
+| --- | --- |
+| `make run` | Start the API (`:4001`) |
+| `make seed-reset` / `make seed` | Load demo data (wipe-first / additive) |
+| `make migrate-up` / `migrate-down` | Apply / roll back DB migrations |
+| `make test` | Unit tests (no Docker needed) |
+| `make test-integration` | Integration tests against a throwaway Postgres (needs Docker) |
+| `make build` `lint` `tidy` | Build binary / lint / `go mod tidy` |
+| `make sqlc-generate` `sqlc-schema` | Regenerate the sqlc pilot / refresh its schema snapshot |
+| `make db-psql` | Open a psql shell in the DB container |
 
-# Or full stack inside Docker
-docker compose up
-```
+## Testing
 
-## Smoke test
+- `make test` — fast unit tests, no external services.
+- `make test-integration` — spins up an ephemeral Postgres via
+  [testcontainers], applies the real migrations, and exercises full flows
+  (signup → login → refresh/theft, create-workspace-with-owner, tenant
+  isolation, audited group changes). Gated behind the `integration` build tag,
+  so plain `make test` stays Docker-free. Skips cleanly if Docker is absent.
 
-```bash
-# Health
-curl localhost:4001/healthz
+[testcontainers]: https://golang.testcontainers.org/
 
-# Create tenant (dev-trust header bypass)
-curl -X POST localhost:4001/v1/tenants \
-  -H 'Content-Type: application/json' \
-  -H 'X-Dev-User: 00000000-0000-0000-0000-000000000000' \
-  -d '{"slug":"acme","name":"Acme Inc"}'
+## sqlc (optional, not wired in)
 
-# Create user under that tenant
-curl -X POST localhost:4001/v1/users \
-  -H 'Content-Type: application/json' \
-  -H 'X-Dev-User: 00000000-0000-0000-0000-000000000000' \
-  -d '{"tenant_id":"<tenant-id>","email":"a@acme.test","password":"correct horse battery"}'
+`internal/platform/sqlcgen/` is a **generated template** showing type-safe,
+compile-checked queries. Nothing imports it yet — repositories still use
+hand-written SQL. Adopt it incrementally with `make sqlc-generate` if/when
+desired; run `make sqlc-schema` after adding migrations.
 
-# Login
-curl -X POST localhost:4001/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"tenant_id":"<tenant-id>","email":"a@acme.test","password":"correct horse battery"}'
-```
-
-## Extracting a context into its own service later
-
-Every module respects six rules:
+## Module rules (so a context can be split out later)
 
 1. Its own Postgres schema. No cross-schema JOINs.
 2. Its own outbox topic.
-3. No imports of another module's `internal/` types — wire through interfaces in `cmd/server/main.go`.
-4. Its own OpenAPI spec (added under `api/` per context as the surface grows).
-5. Every mutation is wrapped in a transaction that writes business rows, audit row, and outbox row together.
+3. No imports of another module's internals — wire through interfaces (see the
+   `tokenIssuer` interface used by tenant/invite/recovery).
+4. Its own OpenAPI spec under `api/` as the surface grows.
+5. Every mutation runs in one transaction that writes the business row, the
+   audit row, and (where relevant) the outbox row together. The service owns
+   that transaction; handlers stay thin.
 6. No shared mutable state.

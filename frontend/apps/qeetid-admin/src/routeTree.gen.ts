@@ -21,13 +21,13 @@ import { Route as AuthSignUpRouteImport } from './routes/_auth/sign-up'
 import { Route as AuthSignInRouteImport } from './routes/_auth/sign-in'
 import { Route as AuthMagicRouteImport } from './routes/_auth/magic'
 import { Route as AuthForgotPasswordRouteImport } from './routes/_auth/forgot-password'
-import { Route as AppUsersRouteImport } from './routes/_app/users'
 import { Route as AppInvitationsRouteImport } from './routes/_app/invitations'
 import { Route as AppGroupsRouteImport } from './routes/_app/groups'
 import { Route as AppDashboardRouteImport } from './routes/_app/dashboard'
 import { Route as AppAnalyticsRouteImport } from './routes/_app/analytics'
 import { Route as AppActivityRouteImport } from './routes/_app/activity'
 import { Route as AppSplatRouteImport } from './routes/_app/$'
+import { Route as AppUsersIndexRouteImport } from './routes/_app/users/index'
 import { Route as AppUsersSessionsRouteImport } from './routes/_app/users/sessions'
 import { Route as AppUsersInvitationsRouteImport } from './routes/_app/users/invitations'
 import { Route as AppUsersImportRouteImport } from './routes/_app/users/import'
@@ -137,11 +137,6 @@ const AuthForgotPasswordRoute = AuthForgotPasswordRouteImport.update({
   path: '/forgot-password',
   getParentRoute: () => AuthRoute,
 } as any)
-const AppUsersRoute = AppUsersRouteImport.update({
-  id: '/users',
-  path: '/users',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppInvitationsRoute = AppInvitationsRouteImport.update({
   id: '/invitations',
   path: '/invitations',
@@ -172,30 +167,35 @@ const AppSplatRoute = AppSplatRouteImport.update({
   path: '/$',
   getParentRoute: () => AppRoute,
 } as any)
+const AppUsersIndexRoute = AppUsersIndexRouteImport.update({
+  id: '/users/',
+  path: '/users/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppUsersSessionsRoute = AppUsersSessionsRouteImport.update({
-  id: '/sessions',
-  path: '/sessions',
-  getParentRoute: () => AppUsersRoute,
+  id: '/users/sessions',
+  path: '/users/sessions',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppUsersInvitationsRoute = AppUsersInvitationsRouteImport.update({
-  id: '/invitations',
-  path: '/invitations',
-  getParentRoute: () => AppUsersRoute,
+  id: '/users/invitations',
+  path: '/users/invitations',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppUsersImportRoute = AppUsersImportRouteImport.update({
-  id: '/import',
-  path: '/import',
-  getParentRoute: () => AppUsersRoute,
+  id: '/users/import',
+  path: '/users/import',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppUsersDeletedRoute = AppUsersDeletedRouteImport.update({
-  id: '/deleted',
-  path: '/deleted',
-  getParentRoute: () => AppUsersRoute,
+  id: '/users/deleted',
+  path: '/users/deleted',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppUsersUserIdRoute = AppUsersUserIdRouteImport.update({
-  id: '/$userId',
-  path: '/$userId',
-  getParentRoute: () => AppUsersRoute,
+  id: '/users/$userId',
+  path: '/users/$userId',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsBrandingRoute = AppSettingsBrandingRouteImport.update({
   id: '/settings/branding',
@@ -449,7 +449,6 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AppDashboardRoute
   '/groups': typeof AppGroupsRouteWithChildren
   '/invitations': typeof AppInvitationsRoute
-  '/users': typeof AppUsersRouteWithChildren
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/magic': typeof AuthMagicRoute
   '/sign-in': typeof AuthSignInRoute
@@ -479,6 +478,7 @@ export interface FileRoutesByFullPath {
   '/users/import': typeof AppUsersImportRoute
   '/users/invitations': typeof AppUsersInvitationsRoute
   '/users/sessions': typeof AppUsersSessionsRoute
+  '/users/': typeof AppUsersIndexRoute
   '/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/auth/api/keys': typeof AppAuthApiKeysRoute
   '/auth/api/machine-identities': typeof AppAuthApiMachineIdentitiesRoute
@@ -518,7 +518,6 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AppDashboardRoute
   '/groups': typeof AppGroupsRouteWithChildren
   '/invitations': typeof AppInvitationsRoute
-  '/users': typeof AppUsersRouteWithChildren
   '/forgot-password': typeof AuthForgotPasswordRoute
   '/magic': typeof AuthMagicRoute
   '/sign-in': typeof AuthSignInRoute
@@ -548,6 +547,7 @@ export interface FileRoutesByTo {
   '/users/import': typeof AppUsersImportRoute
   '/users/invitations': typeof AppUsersInvitationsRoute
   '/users/sessions': typeof AppUsersSessionsRoute
+  '/users': typeof AppUsersIndexRoute
   '/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/auth/api/keys': typeof AppAuthApiKeysRoute
   '/auth/api/machine-identities': typeof AppAuthApiMachineIdentitiesRoute
@@ -590,7 +590,6 @@ export interface FileRoutesById {
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/groups': typeof AppGroupsRouteWithChildren
   '/_app/invitations': typeof AppInvitationsRoute
-  '/_app/users': typeof AppUsersRouteWithChildren
   '/_auth/forgot-password': typeof AuthForgotPasswordRoute
   '/_auth/magic': typeof AuthMagicRoute
   '/_auth/sign-in': typeof AuthSignInRoute
@@ -620,6 +619,7 @@ export interface FileRoutesById {
   '/_app/users/import': typeof AppUsersImportRoute
   '/_app/users/invitations': typeof AppUsersInvitationsRoute
   '/_app/users/sessions': typeof AppUsersSessionsRoute
+  '/_app/users/': typeof AppUsersIndexRoute
   '/_app/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/_app/auth/api/keys': typeof AppAuthApiKeysRoute
   '/_app/auth/api/machine-identities': typeof AppAuthApiMachineIdentitiesRoute
@@ -661,7 +661,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/groups'
     | '/invitations'
-    | '/users'
     | '/forgot-password'
     | '/magic'
     | '/sign-in'
@@ -691,6 +690,7 @@ export interface FileRouteTypes {
     | '/users/import'
     | '/users/invitations'
     | '/users/sessions'
+    | '/users/'
     | '/access/roles/$roleId'
     | '/auth/api/keys'
     | '/auth/api/machine-identities'
@@ -730,7 +730,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/groups'
     | '/invitations'
-    | '/users'
     | '/forgot-password'
     | '/magic'
     | '/sign-in'
@@ -760,6 +759,7 @@ export interface FileRouteTypes {
     | '/users/import'
     | '/users/invitations'
     | '/users/sessions'
+    | '/users'
     | '/access/roles/$roleId'
     | '/auth/api/keys'
     | '/auth/api/machine-identities'
@@ -801,7 +801,6 @@ export interface FileRouteTypes {
     | '/_app/dashboard'
     | '/_app/groups'
     | '/_app/invitations'
-    | '/_app/users'
     | '/_auth/forgot-password'
     | '/_auth/magic'
     | '/_auth/sign-in'
@@ -831,6 +830,7 @@ export interface FileRouteTypes {
     | '/_app/users/import'
     | '/_app/users/invitations'
     | '/_app/users/sessions'
+    | '/_app/users/'
     | '/_app/access/roles/$roleId'
     | '/_app/auth/api/keys'
     | '/_app/auth/api/machine-identities'
@@ -955,13 +955,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthForgotPasswordRouteImport
       parentRoute: typeof AuthRoute
     }
-    '/_app/users': {
-      id: '/_app/users'
-      path: '/users'
-      fullPath: '/users'
-      preLoaderRoute: typeof AppUsersRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/invitations': {
       id: '/_app/invitations'
       path: '/invitations'
@@ -1004,40 +997,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSplatRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/users/': {
+      id: '/_app/users/'
+      path: '/users'
+      fullPath: '/users/'
+      preLoaderRoute: typeof AppUsersIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/users/sessions': {
       id: '/_app/users/sessions'
-      path: '/sessions'
+      path: '/users/sessions'
       fullPath: '/users/sessions'
       preLoaderRoute: typeof AppUsersSessionsRouteImport
-      parentRoute: typeof AppUsersRoute
+      parentRoute: typeof AppRoute
     }
     '/_app/users/invitations': {
       id: '/_app/users/invitations'
-      path: '/invitations'
+      path: '/users/invitations'
       fullPath: '/users/invitations'
       preLoaderRoute: typeof AppUsersInvitationsRouteImport
-      parentRoute: typeof AppUsersRoute
+      parentRoute: typeof AppRoute
     }
     '/_app/users/import': {
       id: '/_app/users/import'
-      path: '/import'
+      path: '/users/import'
       fullPath: '/users/import'
       preLoaderRoute: typeof AppUsersImportRouteImport
-      parentRoute: typeof AppUsersRoute
+      parentRoute: typeof AppRoute
     }
     '/_app/users/deleted': {
       id: '/_app/users/deleted'
-      path: '/deleted'
+      path: '/users/deleted'
       fullPath: '/users/deleted'
       preLoaderRoute: typeof AppUsersDeletedRouteImport
-      parentRoute: typeof AppUsersRoute
+      parentRoute: typeof AppRoute
     }
     '/_app/users/$userId': {
       id: '/_app/users/$userId'
-      path: '/$userId'
+      path: '/users/$userId'
       fullPath: '/users/$userId'
       preLoaderRoute: typeof AppUsersUserIdRouteImport
-      parentRoute: typeof AppUsersRoute
+      parentRoute: typeof AppRoute
     }
     '/_app/settings/branding': {
       id: '/_app/settings/branding'
@@ -1369,26 +1369,6 @@ const AppGroupsRouteWithChildren = AppGroupsRoute._addFileChildren(
   AppGroupsRouteChildren,
 )
 
-interface AppUsersRouteChildren {
-  AppUsersUserIdRoute: typeof AppUsersUserIdRoute
-  AppUsersDeletedRoute: typeof AppUsersDeletedRoute
-  AppUsersImportRoute: typeof AppUsersImportRoute
-  AppUsersInvitationsRoute: typeof AppUsersInvitationsRoute
-  AppUsersSessionsRoute: typeof AppUsersSessionsRoute
-}
-
-const AppUsersRouteChildren: AppUsersRouteChildren = {
-  AppUsersUserIdRoute: AppUsersUserIdRoute,
-  AppUsersDeletedRoute: AppUsersDeletedRoute,
-  AppUsersImportRoute: AppUsersImportRoute,
-  AppUsersInvitationsRoute: AppUsersInvitationsRoute,
-  AppUsersSessionsRoute: AppUsersSessionsRoute,
-}
-
-const AppUsersRouteWithChildren = AppUsersRoute._addFileChildren(
-  AppUsersRouteChildren,
-)
-
 interface AppAccessRolesRouteChildren {
   AppAccessRolesRoleIdRoute: typeof AppAccessRolesRoleIdRoute
 }
@@ -1433,7 +1413,6 @@ interface AppRouteChildren {
   AppDashboardRoute: typeof AppDashboardRoute
   AppGroupsRoute: typeof AppGroupsRouteWithChildren
   AppInvitationsRoute: typeof AppInvitationsRoute
-  AppUsersRoute: typeof AppUsersRouteWithChildren
   AppAccessPermissionsRoute: typeof AppAccessPermissionsRoute
   AppAccessPoliciesRoute: typeof AppAccessPoliciesRoute
   AppAccessResourcesRoute: typeof AppAccessResourcesRoute
@@ -1449,6 +1428,12 @@ interface AppRouteChildren {
   AppSecuritySessionsRoute: typeof AppSecuritySessionsRoute
   AppSettingsBillingRoute: typeof AppSettingsBillingRoute
   AppSettingsBrandingRoute: typeof AppSettingsBrandingRoute
+  AppUsersUserIdRoute: typeof AppUsersUserIdRoute
+  AppUsersDeletedRoute: typeof AppUsersDeletedRoute
+  AppUsersImportRoute: typeof AppUsersImportRoute
+  AppUsersInvitationsRoute: typeof AppUsersInvitationsRoute
+  AppUsersSessionsRoute: typeof AppUsersSessionsRoute
+  AppUsersIndexRoute: typeof AppUsersIndexRoute
   AppAuthApiKeysRoute: typeof AppAuthApiKeysRoute
   AppAuthApiMachineIdentitiesRoute: typeof AppAuthApiMachineIdentitiesRoute
   AppAuthApiSecretsRoute: typeof AppAuthApiSecretsRoute
@@ -1484,7 +1469,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppDashboardRoute: AppDashboardRoute,
   AppGroupsRoute: AppGroupsRouteWithChildren,
   AppInvitationsRoute: AppInvitationsRoute,
-  AppUsersRoute: AppUsersRouteWithChildren,
   AppAccessPermissionsRoute: AppAccessPermissionsRoute,
   AppAccessPoliciesRoute: AppAccessPoliciesRoute,
   AppAccessResourcesRoute: AppAccessResourcesRoute,
@@ -1500,6 +1484,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppSecuritySessionsRoute: AppSecuritySessionsRoute,
   AppSettingsBillingRoute: AppSettingsBillingRoute,
   AppSettingsBrandingRoute: AppSettingsBrandingRoute,
+  AppUsersUserIdRoute: AppUsersUserIdRoute,
+  AppUsersDeletedRoute: AppUsersDeletedRoute,
+  AppUsersImportRoute: AppUsersImportRoute,
+  AppUsersInvitationsRoute: AppUsersInvitationsRoute,
+  AppUsersSessionsRoute: AppUsersSessionsRoute,
+  AppUsersIndexRoute: AppUsersIndexRoute,
   AppAuthApiKeysRoute: AppAuthApiKeysRoute,
   AppAuthApiMachineIdentitiesRoute: AppAuthApiMachineIdentitiesRoute,
   AppAuthApiSecretsRoute: AppAuthApiSecretsRoute,

@@ -8,15 +8,15 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mattn/go-isatty"
 
-	"github.com/qeetgroup/qeet-identity/internal/apikey"
 	"github.com/qeetgroup/qeet-identity/internal/analytics"
+	"github.com/qeetgroup/qeet-identity/internal/apikey"
 	"github.com/qeetgroup/qeet-identity/internal/audit"
 	"github.com/qeetgroup/qeet-identity/internal/auth"
 	"github.com/qeetgroup/qeet-identity/internal/branding"
@@ -35,6 +35,7 @@ import (
 	"github.com/qeetgroup/qeet-identity/internal/platform/notifier"
 	"github.com/qeetgroup/qeet-identity/internal/platform/outbox"
 	"github.com/qeetgroup/qeet-identity/internal/platform/tokens"
+	"github.com/qeetgroup/qeet-identity/internal/platform/worker"
 	"github.com/qeetgroup/qeet-identity/internal/policy"
 	"github.com/qeetgroup/qeet-identity/internal/principal"
 	"github.com/qeetgroup/qeet-identity/internal/rbac"
@@ -95,79 +96,7 @@ func main() {
 	}
 	defer pool.Close()
 
-	issuer := tokens.NewIssuer(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
-	verifier := &httpx.AuthVerifier{
-		Tokens:          issuer,
-		DevTrustHeaders: cfg.AuthDevTrustHeaders,
-	}
-
-	tenantRepo := tenant.NewRepository(pool)
-	userRepo := user.NewRepository(pool)
-	rbacRepo := rbac.NewRepository(pool)
-	if err := rbacRepo.SeedBuiltins(rootCtx); err != nil {
-		slog.Warn("rbac seed", "err", err)
-	}
-	brandingRepo := branding.NewRepository(pool)
-	policyRepo := policy.NewRepository(pool)
-
-	sender := notifier.LogSender{}
-	verifyService := verification.NewService(pool, sender, 10*time.Minute)
-	recoveryService := recovery.NewService(pool, sender, time.Hour, "http://localhost:3000")
-	inviteService := invite.NewService(pool, sender, 14*24*time.Hour, "http://localhost:3000")
-	authService := auth.NewService(pool, userRepo, issuer)
-	apikeyService := apikey.NewService(pool)
-	principalService := principal.NewService(pool, issuer)
-	mfaService := mfa.NewService(pool, cfg.JWTIssuer)
-	webhookService := webhook.NewService(pool)
-	gdprService := gdpr.NewService(pool, 30*24*time.Hour)
-	auditReader := audit.NewReader(pool)
-	auditVerifier := audit.NewVerifier(pool)
-	analyticsReader := analytics.NewReader(pool)
-	outboxReader := outbox.NewReader(pool)
-
-	startedAt := time.Now()
-	healthHandler := health.New(cfg.ServiceName, cfg.ServiceEnv, startedAt)
-	healthHandler.AddReadiness("db", health.PingDB(pool))
-	inFlight := httpx.NewInFlight()
-	oidcService := oidc.NewService(pool, issuer)
-	passkeyService := passkey.NewService(pool)
-	socialService := social.NewService(pool)
-	groupService := group.NewService(pool)
-
-	v := validator.New(validator.WithRequiredStructEnabled())
-	deps := httpapi.Deps{
-		Tenant:        &tenant.Handler{Repo: tenantRepo, Validate: v},
-		User:          &user.Handler{Repo: userRepo, Validate: v},
-		Auth:          &auth.Handler{Service: authService, Validate: v},
-		RBAC:          &rbac.Handler{Repo: rbacRepo, Validate: v},
-		Verification:  &verification.Handler{Service: verifyService},
-		Recovery:      &recovery.Handler{Service: recoveryService, AuthService: authService},
-		Invite:        &invite.Handler{Service: inviteService, AuthService: authService, Validate: v},
-		Branding:      &branding.Handler{Repo: brandingRepo},
-		APIKey:        &apikey.Handler{Service: apikeyService},
-		APIKeyService: apikeyService,
-		Principal:     &principal.Handler{Service: principalService},
-		MFA:           &mfa.Handler{Service: mfaService},
-		Webhook:       &webhook.Handler{Service: webhookService},
-		Policy:        &policy.Handler{Repo: policyRepo},
-		GDPR:          &gdpr.Handler{Service: gdprService},
-		Audit:         &audit.Handler{Reader: auditReader, Verifier: auditVerifier},
-		Analytics:     &analytics.Handler{Reader: analyticsReader},
-		Outbox:        &outbox.Handler{Reader: outboxReader},
-		OIDC:          &oidc.Handler{Service: oidcService},
-		Passkey:       &passkey.Handler{Service: passkeyService},
-		Social:        &social.Handler{Service: socialService},
-		Group:         &group.Handler{Service: groupService},
-		Health:        healthHandler,
-		InFlight:      inFlight,
-
-		AuthVerifier:   verifier,
-		AllowedOrigins: cfg.AllowedOrigins(),
-		ServiceName:    cfg.ServiceName,
-		ServiceEnv:     cfg.ServiceEnv,
-		StartedAt:      startedAt,
-		CSRFDisabled:   cfg.CSRFDisabled,
-	}
+	deps, workers := buildDeps(rootCtx, cfg, pool)
 
 	if cfg.CSRFDisabled {
 		slog.Warn("CSRF protection is DISABLED (dev only) — set CSRF_DISABLED=false to re-enable")
@@ -175,20 +104,11 @@ func main() {
 
 	router := httpapi.NewRouter(deps)
 
-	outboxDispatcher := outbox.NewDispatcher(pool, outbox.LogPublisher{}, 2*time.Second, 50)
-
-	var workerWG sync.WaitGroup
-	startWorker := func(name string, run func(context.Context)) {
-		workerWG.Add(1)
-		go func() {
-			defer workerWG.Done()
-			run(rootCtx)
-			slog.Info("worker stopped", "name", name)
-		}()
+	sup := worker.New()
+	for _, w := range workers {
+		sup.Register(w.name, w.run)
 	}
-	startWorker("outbox", outboxDispatcher.Run)
-	startWorker("webhook", webhookService.RunDispatcher)
-	startWorker("gdpr", gdprService.Run)
+	waitWorkers := sup.Start(rootCtx)
 
 	srv := &stdhttp.Server{
 		Addr:         ":" + cfg.HTTPPort,
@@ -206,7 +126,7 @@ func main() {
 
 	<-rootCtx.Done()
 	shutdownStart := time.Now()
-	inFlightAtSignal := inFlight.Count()
+	inFlightAtSignal := deps.InFlight.Count()
 	slog.Info("shutdown initiated", "in_flight", inFlightAtSignal)
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -218,16 +138,16 @@ func main() {
 
 	workerDone := make(chan struct{})
 	go func() {
-		workerWG.Wait()
+		waitWorkers()
 		close(workerDone)
 	}()
 	select {
 	case <-workerDone:
 	case <-shutdownCtx.Done():
-		slog.Warn("worker drain timed out", "in_flight", inFlight.Count())
+		slog.Warn("worker drain timed out", "in_flight", deps.InFlight.Count())
 	}
 
-	dropped := inFlight.Count()
+	dropped := deps.InFlight.Count()
 	duration := time.Since(shutdownStart)
 	slog.Info("shutdown complete",
 		"duration_ms", duration.Milliseconds(),
@@ -261,4 +181,96 @@ func main() {
 	} else {
 		slog.Warn("audit shutdown begin tx", "err", err)
 	}
+}
+
+type namedWorker struct {
+	name string
+	run  worker.Func
+}
+
+// buildDeps constructs every repository, service, and handler and returns the
+// HTTP dependency set plus the background workers to supervise. Keeping all
+// wiring here lets main() focus on process lifecycle.
+func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) (httpapi.Deps, []namedWorker) {
+	issuer := tokens.NewIssuer(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+	verifier := &httpx.AuthVerifier{
+		Tokens:          issuer,
+		DevTrustHeaders: cfg.AuthDevTrustHeaders,
+	}
+
+	tenantRepo := tenant.NewRepository(pool)
+	userRepo := user.NewRepository(pool)
+	rbacRepo := rbac.NewRepository(pool)
+	if err := rbacRepo.SeedBuiltins(rootCtx); err != nil {
+		slog.Warn("rbac seed", "err", err)
+	}
+	brandingRepo := branding.NewRepository(pool)
+	policyRepo := policy.NewRepository(pool)
+
+	sender := notifier.LogSender{}
+	verifyService := verification.NewService(pool, sender, 10*time.Minute)
+	recoveryService := recovery.NewService(pool, sender, time.Hour, cfg.AppBaseURL)
+	inviteService := invite.NewService(pool, sender, 14*24*time.Hour, cfg.AppBaseURL)
+	authService := auth.NewService(pool, userRepo, issuer)
+	apikeyService := apikey.NewService(pool)
+	principalService := principal.NewService(pool, issuer)
+	mfaService := mfa.NewService(pool, cfg.JWTIssuer)
+	webhookService := webhook.NewService(pool)
+	gdprService := gdpr.NewService(pool, 30*24*time.Hour)
+	auditReader := audit.NewReader(pool)
+	auditVerifier := audit.NewVerifier(pool)
+	analyticsReader := analytics.NewReader(pool)
+	outboxReader := outbox.NewReader(pool)
+
+	startedAt := time.Now()
+	healthHandler := health.New(cfg.ServiceName, cfg.ServiceEnv, startedAt)
+	healthHandler.AddReadiness("db", health.PingDB(pool))
+	inFlight := httpx.NewInFlight()
+	oidcService := oidc.NewService(pool, issuer)
+	passkeyService := passkey.NewService(pool)
+	socialService := social.NewService(pool)
+	groupService := group.NewService(pool)
+
+	v := validator.New(validator.WithRequiredStructEnabled())
+	deps := httpapi.Deps{
+		Tenant:        &tenant.Handler{Repo: tenantRepo, Validate: v, AuthService: authService},
+		User:          &user.Handler{Repo: userRepo, Validate: v},
+		Auth:          &auth.Handler{Service: authService, Validate: v},
+		RBAC:          &rbac.Handler{Repo: rbacRepo, Service: rbac.NewService(rbacRepo), Validate: v},
+		Verification:  &verification.Handler{Service: verifyService},
+		Recovery:      &recovery.Handler{Service: recoveryService, AuthService: authService},
+		Invite:        &invite.Handler{Service: inviteService, AuthService: authService, Validate: v},
+		Branding:      &branding.Handler{Repo: brandingRepo},
+		APIKey:        &apikey.Handler{Service: apikeyService},
+		APIKeyService: apikeyService,
+		Principal:     &principal.Handler{Service: principalService},
+		MFA:           &mfa.Handler{Service: mfaService},
+		Webhook:       &webhook.Handler{Service: webhookService},
+		Policy:        &policy.Handler{Repo: policyRepo},
+		GDPR:          &gdpr.Handler{Service: gdprService},
+		Audit:         &audit.Handler{Reader: auditReader, Verifier: auditVerifier},
+		Analytics:     &analytics.Handler{Reader: analyticsReader},
+		Outbox:        &outbox.Handler{Reader: outboxReader},
+		OIDC:          &oidc.Handler{Service: oidcService},
+		Passkey:       &passkey.Handler{Service: passkeyService},
+		Social:        &social.Handler{Service: socialService},
+		Group:         &group.Handler{Service: groupService},
+		Health:        healthHandler,
+		InFlight:      inFlight,
+
+		AuthVerifier:   verifier,
+		AllowedOrigins: cfg.AllowedOrigins(),
+		ServiceName:    cfg.ServiceName,
+		ServiceEnv:     cfg.ServiceEnv,
+		StartedAt:      startedAt,
+		CSRFDisabled:   cfg.CSRFDisabled,
+	}
+
+	outboxDispatcher := outbox.NewDispatcher(pool, outbox.LogPublisher{}, 2*time.Second, 50)
+	workers := []namedWorker{
+		{name: "outbox", run: outboxDispatcher.Run},
+		{name: "webhook", run: webhookService.RunDispatcher},
+		{name: "gdpr", run: gdprService.Run},
+	}
+	return deps, workers
 }

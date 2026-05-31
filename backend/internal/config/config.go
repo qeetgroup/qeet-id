@@ -29,6 +29,10 @@ type Config struct {
 	AllowedOriginsRaw   string `envconfig:"ALLOWED_ORIGINS" default:""`
 	AuthDevTrustHeaders bool   `envconfig:"AUTH_DEV_TRUST_HEADERS" default:"false"`
 	CSRFDisabled        bool   `envconfig:"CSRF_DISABLED" default:"false"`
+
+	// AppBaseURL is the frontend origin used to build links in emails
+	// (password reset, magic links, invites).
+	AppBaseURL string `envconfig:"APP_BASE_URL" default:"http://localhost:3000"`
 }
 
 func Load() (*Config, error) {

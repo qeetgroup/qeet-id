@@ -18,6 +18,7 @@ import { Link } from "@tanstack/react-router";
 import { Building2Icon, CheckIcon, ChevronsUpDownIcon, PlusIcon } from "lucide-react";
 
 import { api, tokenStore } from "@/lib/api";
+import { switchToTenant } from "@/lib/auth";
 
 type Tenant = {
   id: string;
@@ -27,18 +28,7 @@ type Tenant = {
   region: string;
 };
 
-// GET /v1/tenants currently returns every tenant in the system (see
-// backend/internal/tenant/http.go list()) — it is not yet scoped to the
-// caller. For now the switcher just renders whatever the API returns; once
-// the backend exposes "tenants I belong to" we should swap that endpoint in
-// without changing this component.
-function switchTenant(id: string) {
-  tokenStore.setTenantId(id);
-  // A tenant change invalidates almost every query in the app (queryKeys
-  // include tenantId). A hard reload is the simplest correct refresh.
-  if (typeof window !== "undefined") window.location.reload();
-}
-
+// GET /v1/tenants is scoped to the caller; clicking one switches via switchToTenant().
 function initialOf(name: string) {
   const trimmed = name.trim();
   return trimmed ? trimmed.charAt(0).toUpperCase() : "?";
@@ -110,7 +100,7 @@ export function TeamSwitcher() {
                     <DropdownMenuItem
                       key={t.id}
                       onClick={() => {
-                        if (!isActive) switchTenant(t.id);
+                        if (!isActive) void switchToTenant(t.id);
                       }}
                       className={cn("gap-2 p-2", isActive && "bg-accent/40")}
                       aria-current={isActive ? "true" : undefined}

@@ -10,11 +10,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/qeetgroup/qeet-identity/internal/platform/dbutil"
 	"github.com/qeetgroup/qeet-identity/internal/platform/errs"
 	"github.com/qeetgroup/qeet-identity/internal/platform/paging"
+	"github.com/qeetgroup/qeet-identity/internal/platform/pgxerr"
 )
 
 // parseUserMetadata decodes the JSONB metadata column. JSONB is guaranteed
@@ -56,13 +57,18 @@ const userCols = `id, tenant_id, email, email_verified_at, phone, phone_verified
 func scanUser(row pgx.Row) (*User, error) {
 	var u User
 	var meta []byte
-	if err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.EmailVerifiedAt,
+	// tenant_id is nullable (tenant-less user); scan via pointer.
+	var tid *uuid.UUID
+	if err := row.Scan(&u.ID, &tid, &u.Email, &u.EmailVerifiedAt,
 		&u.Phone, &u.PhoneVerifiedAt, &u.DisplayName, &u.Status, &meta,
 		&u.CreatedAt, &u.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrNotFound
 		}
 		return nil, err
+	}
+	if tid != nil {
+		u.TenantID = *tid
 	}
 	u.Metadata = parseUserMetadata(meta, u.ID)
 	return &u, nil
@@ -103,11 +109,10 @@ func (r *Repository) CreateWithCredential(ctx context.Context, in CreateInput, p
 	)
 	u, err := scanUser(row)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		if pgxerr.IsUnique(err) {
 			return nil, errs.ErrConflict.WithDetail("email already exists for tenant")
 		}
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		if pgxerr.IsForeignKey(err) {
 			return nil, errs.ErrBadRequest.WithDetail("tenant does not exist")
 		}
 		return nil, err
@@ -152,6 +157,7 @@ func (r *Repository) GetByEmailGlobal(ctx context.Context, email string) (*User,
 	return scanUser(row)
 }
 
+// ListByTenant returns a tenant's members, defined by rbac.user_roles membership (not users.tenant_id).
 func (r *Repository) ListByTenant(ctx context.Context, tenantID uuid.UUID, limit int, cursor string) ([]User, string, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
@@ -164,16 +170,16 @@ func (r *Repository) ListByTenant(ctx context.Context, tenantID uuid.UUID, limit
 		rows, err = r.pool.Query(ctx, `
 			SELECT `+userCols+`
 			FROM "user".users
-			WHERE tenant_id = $1 AND deleted_at IS NULL
+			WHERE deleted_at IS NULL
+			  AND EXISTS (
+				SELECT 1 FROM rbac.user_roles ur
+				WHERE ur.user_id = "user".users.id AND ur.tenant_id = $1
+			  )
 			ORDER BY created_at DESC, id DESC
 			LIMIT $2
 		`, tenantID, limit+1)
 	} else {
-		// Cursor is now an opaque base64(createdAt|id) pair — see
-		// platform/paging. The tuple inequality `(created_at, id) <
-		// ($curT, $curID)` matches the composite index, so the planner
-		// gets an index range scan instead of the legacy subselect
-		// (which forced a second lookup per page).
+		// Cursor: opaque base64(createdAt|id); tuple inequality hits the composite index.
 		curT, curID, perr := paging.DecodeTimeUUID(cursor)
 		if perr != nil {
 			return nil, "", errs.ErrBadRequest.WithDetail("invalid cursor")
@@ -181,7 +187,11 @@ func (r *Repository) ListByTenant(ctx context.Context, tenantID uuid.UUID, limit
 		rows, err = r.pool.Query(ctx, `
 			SELECT `+userCols+`
 			FROM "user".users
-			WHERE tenant_id = $1 AND deleted_at IS NULL
+			WHERE deleted_at IS NULL
+			  AND EXISTS (
+				SELECT 1 FROM rbac.user_roles ur
+				WHERE ur.user_id = "user".users.id AND ur.tenant_id = $1
+			  )
 			  AND (created_at, id) < ($2, $3)
 			ORDER BY created_at DESC, id DESC
 			LIMIT $4
@@ -196,10 +206,14 @@ func (r *Repository) ListByTenant(ctx context.Context, tenantID uuid.UUID, limit
 	for rows.Next() {
 		var u User
 		var meta []byte
-		if err := rows.Scan(&u.ID, &u.TenantID, &u.Email, &u.EmailVerifiedAt,
+		var tid *uuid.UUID
+		if err := rows.Scan(&u.ID, &tid, &u.Email, &u.EmailVerifiedAt,
 			&u.Phone, &u.PhoneVerifiedAt, &u.DisplayName, &u.Status, &meta,
 			&u.CreatedAt, &u.UpdatedAt); err != nil {
 			return nil, "", err
+		}
+		if tid != nil {
+			u.TenantID = *tid
 		}
 		u.Metadata = parseUserMetadata(meta, u.ID)
 		out = append(out, u)
@@ -214,39 +228,31 @@ func (r *Repository) ListByTenant(ctx context.Context, tenantID uuid.UUID, limit
 }
 
 func (r *Repository) Update(ctx context.Context, id uuid.UUID, in UpdateInput) (*User, error) {
-	var (
-		sets []string
-		args []any
-		i    = 1
-	)
+	ub := dbutil.NewUpdate()
 	if in.DisplayName != nil {
-		sets = append(sets, "display_name = $"+strconv.Itoa(i))
-		args = append(args, *in.DisplayName)
-		i++
+		ub.Set("display_name", *in.DisplayName)
 	}
 	if in.Phone != nil {
-		sets = append(sets, "phone = $"+strconv.Itoa(i))
-		args = append(args, *in.Phone)
-		i++
+		ub.Set("phone", *in.Phone)
 	}
 	if in.Status != nil {
-		sets = append(sets, "status = $"+strconv.Itoa(i))
-		args = append(args, *in.Status)
-		i++
+		ub.Set("status", *in.Status)
 	}
 	if in.Metadata != nil {
-		meta, _ := json.Marshal(in.Metadata)
-		sets = append(sets, "metadata = $"+strconv.Itoa(i))
-		args = append(args, meta)
-		i++
+		meta, err := json.Marshal(in.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		ub.Set("metadata", meta)
 	}
-	if len(sets) == 0 {
+	if ub.Empty() {
 		return r.Get(ctx, id)
 	}
-	sets = append(sets, "updated_at = NOW()")
-	args = append(args, id)
-	q := `UPDATE "user".users SET ` + strings.Join(sets, ", ") +
-		` WHERE id = $` + strconv.Itoa(i) + ` AND deleted_at IS NULL RETURNING ` + userCols
+	ub.SetRaw("updated_at = NOW()")
+	idAt := ub.NextPlaceholder()
+	args := append(ub.Args(), id)
+	q := `UPDATE "user".users SET ` + ub.Assignments() +
+		` WHERE id = $` + strconv.Itoa(idAt) + ` AND deleted_at IS NULL RETURNING ` + userCols
 	row := r.pool.QueryRow(ctx, q, args...)
 	return scanUser(row)
 }

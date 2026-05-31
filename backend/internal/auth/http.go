@@ -26,6 +26,7 @@ func (h *Handler) Mount(r chi.Router) {
 // MountAuthed mounts endpoints that require the RequireAuth middleware.
 func (h *Handler) MountAuthed(r chi.Router) {
 	r.Post("/auth/logout", h.logout)
+	r.Post("/auth/switch-tenant", h.switchTenant)
 	r.Get("/auth/sessions", h.listSessions)
 	r.Delete("/auth/sessions/{id}", h.revokeSession)
 	r.Get("/auth/me", h.me)
@@ -61,7 +62,7 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, errs.ErrUnprocessable.WithDetail(err.Error()))
 		return
 	}
-	pair, u, t, err := h.Service.Signup(r.Context(), SignupInput{
+	pair, u, _, err := h.Service.Signup(r.Context(), SignupInput{
 		Email:       in.Email,
 		Password:    in.Password,
 		DisplayName: in.DisplayName,
@@ -70,10 +71,10 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		// Conflict (existing email) used to surface "email already
-		// exists for tenant" verbatim. Neutralise to a generic 422 so
-		// the response is indistinguishable from other validation
-		// failures. Other backend errors (DB unavailable, etc.) still
-		// bubble up so legitimate operational issues aren't hidden.
+		// exists" verbatim. Neutralise to a generic 422 so the response
+		// is indistinguishable from other validation failures. Other
+		// backend errors (DB unavailable, etc.) still bubble up so
+		// legitimate operational issues aren't hidden.
 		if e := errs.As(err); e != nil && e.Code == errs.ErrConflict.Code {
 			httpx.WriteError(w, r, errs.ErrUnprocessable.WithDetail("could not create account"))
 			return
@@ -81,17 +82,15 @@ func (h *Handler) signup(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
+	// Tenant-less: no tenant or roles; the user creates one from the UI.
 	httpx.WriteJSON(w, http.StatusCreated, map[string]any{
 		"user":          u,
-		"tenant":        t,
 		"access_token":  pair.AccessToken,
 		"token_type":    pair.TokenType,
 		"expires_at":    pair.ExpiresAt,
 		"refresh_token": pair.RefreshToken,
 		"session_id":    pair.SessionID,
 		"user_id":       pair.UserID,
-		"tenant_id":     t.ID,
-		"roles":         []string{"owner"},
 	})
 }
 
@@ -161,6 +160,47 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+type switchTenantInput struct {
+	TenantID string `json:"tenant_id" validate:"required,uuid"`
+}
+
+// switchTenant returns a token pair scoped to a tenant the caller belongs to (403 otherwise).
+func (h *Handler) switchTenant(w http.ResponseWriter, r *http.Request) {
+	p := httpx.PrincipalFromCtx(r.Context())
+	if p == nil || p.UserID == nil {
+		httpx.WriteError(w, r, errs.ErrUnauthorized)
+		return
+	}
+	var in switchTenantInput
+	if err := httpx.DecodeJSON(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	if err := h.Validate.Struct(in); err != nil {
+		httpx.WriteError(w, r, errs.ErrUnprocessable.WithDetail(err.Error()))
+		return
+	}
+	tid, err := uuid.Parse(in.TenantID)
+	if err != nil {
+		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid tenant_id"))
+		return
+	}
+	pair, err := h.Service.SwitchTenant(r.Context(), *p.UserID, tid, httpx.ClientIP(r), r.UserAgent())
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"access_token":  pair.AccessToken,
+		"token_type":    pair.TokenType,
+		"expires_at":    pair.ExpiresAt,
+		"refresh_token": pair.RefreshToken,
+		"session_id":    pair.SessionID,
+		"user_id":       pair.UserID,
+		"tenant_id":     tid,
+	})
 }
 
 func (h *Handler) listSessions(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,8 @@
 package tenant
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -9,14 +11,23 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/qeetgroup/qeet-identity/internal/audit"
+	"github.com/qeetgroup/qeet-identity/internal/auth"
 	"github.com/qeetgroup/qeet-identity/internal/platform/errs"
 	"github.com/qeetgroup/qeet-identity/internal/platform/httpx"
 	"github.com/qeetgroup/qeet-identity/internal/platform/outbox"
 )
 
+// tokenIssuer is the slice of auth.Service this handler needs, declared as an
+// interface so the dependency is mockable and not tied to the concrete type.
+type tokenIssuer interface {
+	IssuePair(ctx context.Context, userID, tenantID uuid.UUID, ip, ua, method string) (*auth.TokenPair, error)
+}
+
 type Handler struct {
 	Repo     *Repository
 	Validate *validator.Validate
+	// Mints a tenant-scoped token after create so the client switches in.
+	AuthService tokenIssuer
 }
 
 func (h *Handler) Mount(r chi.Router) {
@@ -28,8 +39,13 @@ func (h *Handler) Mount(r chi.Router) {
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+	p := httpx.PrincipalFromCtx(r.Context())
+	if p == nil || p.UserID == nil {
+		httpx.WriteError(w, r, errs.ErrUnauthorized)
+		return
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	out, next, err := h.Repo.List(r.Context(), limit, r.URL.Query().Get("cursor"))
+	out, next, err := h.Repo.List(r.Context(), *p.UserID, limit, r.URL.Query().Get("cursor"))
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
@@ -41,6 +57,11 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+	p := httpx.PrincipalFromCtx(r.Context())
+	if p == nil || p.UserID == nil {
+		httpx.WriteError(w, r, errs.ErrUnauthorized)
+		return
+	}
 	var in CreateInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, r, err)
@@ -50,22 +71,41 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, errs.ErrUnprocessable.WithDetail(err.Error()))
 		return
 	}
-	t, err := h.Repo.Create(r.Context(), in)
+	// The creator becomes the tenant's owner (role + membership) in one tx.
+	t, err := h.Repo.CreateWithOwner(r.Context(), in, *p.UserID)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	// Audit + outbox in a follow-up tx so failure here doesn't roll back
-	// the user-visible create. Each module ships its own pattern; tenants
-	// are infrequent so the simpler shape is fine.
+	// Audit + outbox in a follow-up tx so failure there doesn't roll back the create.
 	go h.publishCreated(r, t)
-	httpx.WriteJSON(w, http.StatusCreated, t)
+
+	// Mint a pair scoped to the new tenant so the caller switches in; tenant still returned if it fails.
+	resp := map[string]any{
+		"tenant":    t,
+		"tenant_id": t.ID,
+		"roles":     []string{"owner"},
+	}
+	if h.AuthService != nil {
+		if pair, err := h.AuthService.IssuePair(r.Context(), *p.UserID, t.ID, httpx.ClientIP(r), r.UserAgent(), "tenant_create"); err == nil {
+			resp["access_token"] = pair.AccessToken
+			resp["token_type"] = pair.TokenType
+			resp["expires_at"] = pair.ExpiresAt
+			resp["refresh_token"] = pair.RefreshToken
+			resp["session_id"] = pair.SessionID
+			resp["user_id"] = pair.UserID
+		}
+	}
+	httpx.WriteJSON(w, http.StatusCreated, resp)
 }
 
 func (h *Handler) publishCreated(r *http.Request, t *Tenant) {
-	ctx := r.Context()
+	// Detach from the request context: this runs in a goroutine after the
+	// response is sent, so r.Context() is already cancelled.
+	ctx := context.WithoutCancel(r.Context())
 	tx, err := h.Repo.Pool().Begin(ctx)
 	if err != nil {
+		slog.Warn("tenant.created publish: begin", "err", err, "tenant_id", t.ID)
 		return
 	}
 	defer tx.Rollback(ctx)
@@ -75,7 +115,7 @@ func (h *Handler) publishCreated(r *http.Request, t *Tenant) {
 		actor = p.UserID
 	}
 	id := t.ID
-	_ = audit.Record(ctx, tx, audit.Event{
+	if err := audit.Record(ctx, tx, audit.Event{
 		TenantID:     &id,
 		ActorUserID:  actor,
 		Action:       "tenant.created",
@@ -85,14 +125,22 @@ func (h *Handler) publishCreated(r *http.Request, t *Tenant) {
 		UserAgent:    r.UserAgent(),
 		RequestID:    httpx.RequestID(r),
 		Metadata:     map[string]any{"slug": t.Slug, "name": t.Name},
-	})
-	_ = outbox.Enqueue(ctx, tx, outbox.Event{
+	}); err != nil {
+		slog.Warn("tenant.created publish: audit", "err", err, "tenant_id", t.ID)
+		return
+	}
+	if err := outbox.Enqueue(ctx, tx, outbox.Event{
 		AggregateID: t.ID,
 		Topic:       "tenant.events",
 		EventType:   "tenant.created",
 		Payload:     t,
-	})
-	_ = tx.Commit(ctx)
+	}); err != nil {
+		slog.Warn("tenant.created publish: outbox", "err", err, "tenant_id", t.ID)
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		slog.Warn("tenant.created publish: commit", "err", err, "tenant_id", t.ID)
+	}
 }
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {

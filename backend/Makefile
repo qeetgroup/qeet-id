@@ -1,4 +1,4 @@
-.PHONY: tidy build run test migrate-up migrate-down migrate-force migrate-down-all \
+.PHONY: tidy build run test test-integration seed seed-reset sqlc-generate sqlc-schema migrate-up migrate-down migrate-force migrate-down-all \
         db-reset db-wipe db-psql lint docker-up docker-down
 
 # Auto-load .env so make targets see the same env the Go process expects.
@@ -28,8 +28,30 @@ build:
 run:
 	$(GO) run ./cmd/server
 
+# Populate the DB with a demo workspace for browsing the admin UI.
+# seed-reset wipes existing data first (dev only). All users share the same
+# password printed at the end.
+seed:
+	$(GO) run ./cmd/seed
+
+seed-reset:
+	$(GO) run ./cmd/seed -reset
+
 test:
 	$(GO) test ./...
+
+# Integration tests spin an ephemeral Postgres via testcontainers (needs Docker).
+# Gated behind the `integration` build tag so plain `make test` stays Docker-free.
+test-integration:
+	$(GO) test -tags=integration ./test/integration/... -timeout 300s
+
+# sqlc-schema refreshes the schema snapshot sqlc reads (run after new migrations).
+sqlc-schema:
+	docker compose exec -T $(PG_SERVICE) pg_dump -U $(POSTGRES_USER) -d $(POSTGRES_DB) --schema-only --no-owner --no-privileges > sqlc/schema.sql
+
+# sqlc-generate regenerates the type-safe query package from sqlc/queries.
+sqlc-generate:
+	sqlc generate
 
 # Requires `migrate` CLI from golang-migrate.
 migrate-up:

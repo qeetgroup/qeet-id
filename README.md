@@ -63,8 +63,13 @@ make install              # go mod tidy + pnpm install
 ```bash
 cp backend/.env.example backend/.env   # adjust if needed
 make db-up                # Postgres on :5001 (Docker)
-make migrate-up           # apply all 25 migrations
+make migrate-up           # apply all migrations
+make seed-reset           # (optional) fill the DB with demo data to click around
 ```
+
+`make seed-reset` creates two demo workspaces with users, roles, groups, API
+keys, webhooks, SSO providers and audit history. Log in with `owner@acme.test`
+(password `Password123!`); see [backend/README.md](./backend/README.md#seed-demo-data) for all accounts.
 
 ### 3. Run the stack
 

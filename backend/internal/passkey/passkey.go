@@ -55,8 +55,9 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]Credential, err
 	return out, nil
 }
 
-func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	ct, err := s.pool.Exec(ctx, `DELETE FROM auth.passkey_credentials WHERE id = $1`, id)
+// Delete is scoped to the owner so one user can't delete another's passkey.
+func (s *Service) Delete(ctx context.Context, id, userID uuid.UUID) error {
+	ct, err := s.pool.Exec(ctx, `DELETE FROM auth.passkey_credentials WHERE id = $1 AND user_id = $2`, id, userID)
 	if err != nil {
 		return err
 	}
@@ -99,7 +100,12 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid id"))
 		return
 	}
-	if err := h.Service.Delete(r.Context(), id); err != nil {
+	userID, err := httpx.RequireUser(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	if err := h.Service.Delete(r.Context(), id, userID); err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}

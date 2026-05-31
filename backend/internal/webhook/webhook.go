@@ -97,12 +97,12 @@ func (s *Service) List(ctx context.Context, tenantID uuid.UUID) ([]Subscription,
 	return out, nil
 }
 
-func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Subscription, error) {
+func (s *Service) Get(ctx context.Context, id, tenantID uuid.UUID) (*Subscription, error) {
 	var sub Subscription
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, tenant_id, url, events, disabled_at, created_at
-		FROM tenant.webhook_subscriptions WHERE id = $1
-	`, id).Scan(&sub.ID, &sub.TenantID, &sub.URL, &sub.Events, &sub.DisabledAt, &sub.CreatedAt)
+		FROM tenant.webhook_subscriptions WHERE id = $1 AND tenant_id = $2
+	`, id, tenantID).Scan(&sub.ID, &sub.TenantID, &sub.URL, &sub.Events, &sub.DisabledAt, &sub.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errs.ErrNotFound
 	}
@@ -114,21 +114,21 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Subscription, error) 
 
 // Disable marks the subscription disabled and returns the (tenantID, url)
 // so the caller doesn't have to re-query for the audit row.
-func (s *Service) Disable(ctx context.Context, tx pgx.Tx, id uuid.UUID) (uuid.UUID, string, error) {
-	var tenantID uuid.UUID
+func (s *Service) Disable(ctx context.Context, tx pgx.Tx, id, tenantID uuid.UUID) (uuid.UUID, string, error) {
+	var disabledTenant uuid.UUID
 	var url string
 	err := tx.QueryRow(ctx, `
 		UPDATE tenant.webhook_subscriptions SET disabled_at = NOW()
-		WHERE id = $1 AND disabled_at IS NULL
+		WHERE id = $1 AND tenant_id = $2 AND disabled_at IS NULL
 		RETURNING tenant_id, url
-	`, id).Scan(&tenantID, &url)
+	`, id, tenantID).Scan(&disabledTenant, &url)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, "", errs.ErrNotFound
 	}
 	if err != nil {
 		return uuid.Nil, "", err
 	}
-	return tenantID, url, nil
+	return disabledTenant, url, nil
 }
 
 // Enqueue persists a delivery for every matching subscription.
@@ -307,13 +307,19 @@ func auditActor(r *http.Request) (*uuid.UUID, string) {
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := httpx.RequireTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
 	var in CreateInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	if in.URL == "" || in.TenantID == uuid.Nil {
-		httpx.WriteError(w, r, errs.ErrUnprocessable.WithDetail("tenant_id and url required"))
+	in.TenantID = tenantID // scope from principal, never the body
+	if in.URL == "" {
+		httpx.WriteError(w, r, errs.ErrUnprocessable.WithDetail("url required"))
 		return
 	}
 	ctx := r.Context()
@@ -359,7 +365,16 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid tenantID"))
 		return
 	}
-	out, err := h.Service.List(r.Context(), tid)
+	tenantID, err := httpx.RequireTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	if tid != tenantID {
+		httpx.WriteError(w, r, errs.ErrForbidden.WithDetail("tenant mismatch"))
+		return
+	}
+	out, err := h.Service.List(r.Context(), tenantID)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
@@ -373,6 +388,11 @@ func (h *Handler) disable(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid id"))
 		return
 	}
+	scopeTenant, err := httpx.RequireTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
 	ctx := r.Context()
 	tx, err := h.Service.Pool().Begin(ctx)
 	if err != nil {
@@ -380,7 +400,7 @@ func (h *Handler) disable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(ctx)
-	tenantID, url, err := h.Service.Disable(ctx, tx, id)
+	tenantID, url, err := h.Service.Disable(ctx, tx, id, scopeTenant)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
@@ -415,7 +435,12 @@ func (h *Handler) test(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid id"))
 		return
 	}
-	sub, err := h.Service.Get(r.Context(), id)
+	tenantID, err := httpx.RequireTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	sub, err := h.Service.Get(r.Context(), id, tenantID)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return

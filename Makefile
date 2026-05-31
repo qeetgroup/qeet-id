@@ -3,6 +3,7 @@
         test test-backend test-frontend test-api test-api-ci \
         lint typecheck format \
         migrate-up migrate-down migrate-force \
+        seed seed-reset \
         db-up db-down db-reset db-wipe db-psql \
         kill kill-backend kill-frontend kill-admin kill-web kill-docs \
         clean
@@ -131,6 +132,12 @@ migrate-down:               ## Roll back one migration
 
 migrate-force:              ## Force migration version (use V=<n>)
 	cd backend && $(MAKE) migrate-force V=$(V)
+
+seed:                       ## Load demo data into the DB (additive)
+	cd backend && $(MAKE) seed
+
+seed-reset:                 ## Wipe (dev only) + load a clean demo dataset
+	cd backend && $(MAKE) seed-reset
 
 # ── Housekeeping ────────────────────────────────────────────────────────────
 clean:                      ## Remove build artifacts and dependency caches

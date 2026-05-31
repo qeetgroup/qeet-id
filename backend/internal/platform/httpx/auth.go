@@ -68,6 +68,25 @@ func RequireAuth(v *AuthVerifier) func(http.Handler) http.Handler {
 	}
 }
 
+// RequireTenant returns the principal's tenant id — the only trustworthy
+// source of tenant scope. Handlers must never take tenant id from URL/body.
+func RequireTenant(r *http.Request) (uuid.UUID, error) {
+	p := PrincipalFromCtx(r.Context())
+	if p == nil || p.TenantID == nil {
+		return uuid.Nil, errs.ErrUnauthorized.WithDetail("tenant scope required")
+	}
+	return *p.TenantID, nil
+}
+
+// RequireUser returns the principal's user id, or an error if absent.
+func RequireUser(r *http.Request) (uuid.UUID, error) {
+	p := PrincipalFromCtx(r.Context())
+	if p == nil || p.UserID == nil {
+		return uuid.Nil, errs.ErrUnauthorized
+	}
+	return *p.UserID, nil
+}
+
 // RequireScope blocks the request unless the principal has at least one
 // of the provided scopes.
 func RequireScope(scopes ...string) func(http.Handler) http.Handler {

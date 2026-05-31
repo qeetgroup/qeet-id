@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -151,9 +152,14 @@ func (s *Service) Verify(ctx context.Context, raw string) (*Key, error) {
 	if k.ExpiresAt != nil && time.Now().After(*k.ExpiresAt) {
 		return nil, errs.ErrUnauthorized.WithDetail("api key expired")
 	}
-	go func() {
-		_, _ = s.pool.Exec(context.Background(), `UPDATE auth.api_keys SET last_used_at = NOW() WHERE id = $1`, k.ID)
-	}()
+	// Best-effort, detached from the request but time-bounded so it can't leak.
+	go func(id uuid.UUID) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := s.pool.Exec(ctx, `UPDATE auth.api_keys SET last_used_at = NOW() WHERE id = $1`, id); err != nil {
+			slog.Warn("apikey last_used_at update failed", "err", err, "api_key_id", id)
+		}
+	}(k.ID)
 	return &k, nil
 }
 

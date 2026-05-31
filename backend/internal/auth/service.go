@@ -11,13 +11,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/qeetgroup/qeet-identity/internal/audit"
 	"github.com/qeetgroup/qeet-identity/internal/platform/errs"
 	"github.com/qeetgroup/qeet-identity/internal/platform/outbox"
 	"github.com/qeetgroup/qeet-identity/internal/platform/password"
+	"github.com/qeetgroup/qeet-identity/internal/platform/pgxerr"
 	"github.com/qeetgroup/qeet-identity/internal/platform/tokens"
 	"github.com/qeetgroup/qeet-identity/internal/user"
 )
@@ -73,31 +73,16 @@ type TokenPair struct {
 	RefreshToken string    `json:"refresh_token"`
 	SessionID    uuid.UUID `json:"session_id"`
 	UserID       uuid.UUID `json:"user_id"`
+	// Tenant the token is scoped to; nil/omitted for a tenant-less session.
+	TenantID *uuid.UUID `json:"tenant_id,omitempty"`
 }
 
-// Signup is the self-service onboarding endpoint. In one transaction it:
-//
-//  1. Creates an auto-generated "personal" tenant for the user.
-//  2. Creates a user under that tenant with a password credential.
-//  3. Creates an "owner" system role for the tenant and grants it every
-//     platform permission currently in rbac.permissions.
-//  4. Assigns the new user to the owner role.
-//  5. Issues an access + refresh token pair so the caller is auto-logged in.
-//
-// The signup input is now tenant-less — the user provides only email +
-// password (+ optional display name). They land in their personal tenant
-// and can rename it or create additional ones from the admin UI.
-//
-// Errors:
-//   - ErrConflict on duplicate email (globally unique)
-//   - ErrUnprocessable on bad input
+// Signup creates a tenant-less identity (user + password + session) and logs them in; no tenant or role is created.
 func (s *Service) Signup(ctx context.Context, in SignupInput) (*TokenPair, *user.User, *TenantBrief, error) {
 	hash, err := password.Hash(in.Password)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-
-	personalSlug, personalName := derivePersonalTenant(in.Email, in.DisplayName)
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -105,44 +90,28 @@ func (s *Service) Signup(ctx context.Context, in SignupInput) (*TokenPair, *user
 	}
 	defer tx.Rollback(ctx)
 
-	// 1) Tenant — personal workspace, slug auto-generated, plan = free.
-	tenant := &TenantBrief{Slug: personalSlug, Name: personalName, Plan: "free", Region: "us-east-1"}
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO tenant.tenants (slug, name, plan, region)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id
-	`, tenant.Slug, tenant.Name, tenant.Plan, tenant.Region).Scan(&tenant.ID); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			// Extremely unlikely — slug collision on a 16-char hex suffix.
-			return nil, nil, nil, errs.ErrConflict.WithDetail("personal tenant slug collision; retry")
-		}
-		return nil, nil, nil, err
-	}
-
-	// 2) User.
+	// 1) User — tenant-less (tenant_id NULL).
 	var displayName any
 	if in.DisplayName != "" {
 		displayName = in.DisplayName
 	}
-	u := &user.User{TenantID: tenant.ID, Email: strings.TrimSpace(in.Email), Status: "active", Metadata: map[string]any{}}
+	u := &user.User{Email: strings.TrimSpace(in.Email), Status: "active", Metadata: map[string]any{}}
 	if in.DisplayName != "" {
 		dn := in.DisplayName
 		u.DisplayName = &dn
 	}
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO "user".users (tenant_id, email, display_name)
-		VALUES ($1, $2, $3)
+		VALUES (NULL, $1, $2)
 		RETURNING id, created_at, updated_at
-	`, u.TenantID, u.Email, displayName).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt); err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return nil, nil, nil, errs.ErrConflict.WithDetail("email already exists for tenant")
+	`, u.Email, displayName).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if pgxerr.IsUnique(err) {
+			return nil, nil, nil, errs.ErrConflict.WithDetail("email already exists")
 		}
 		return nil, nil, nil, err
 	}
 
-	// 3) Password credential.
+	// 2) Password credential.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO auth.password_credentials (user_id, password_hash)
 		VALUES ($1, $2)
@@ -150,34 +119,8 @@ func (s *Service) Signup(ctx context.Context, in SignupInput) (*TokenPair, *user
 		return nil, nil, nil, err
 	}
 
-	// 4) Owner role for this tenant.
-	var roleID uuid.UUID
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO rbac.roles (tenant_id, name, description, is_system)
-		VALUES ($1, 'owner', 'Tenant owner — full access', TRUE)
-		RETURNING id
-	`, tenant.ID).Scan(&roleID); err != nil {
-		return nil, nil, nil, err
-	}
-
-	// 5) Grant every platform permission to the owner role.
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO rbac.role_permissions (role_id, permission_id)
-		SELECT $1, id FROM rbac.permissions
-	`, roleID); err != nil {
-		return nil, nil, nil, err
-	}
-
-	// 6) Assign the user to the owner role.
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO rbac.user_roles (user_id, tenant_id, role_id)
-		VALUES ($1, $2, $3)
-	`, u.ID, tenant.ID, roleID); err != nil {
-		return nil, nil, nil, err
-	}
-
-	// 7) Session + access + refresh token, all in the same tx so signup
-	// is fully atomic.
+	// 3) Tenant-less session + access + refresh token, all in the same tx so
+	// signup is fully atomic.
 	sessionID := uuid.New()
 	var ipArg any
 	if in.IP != "" {
@@ -185,11 +128,11 @@ func (s *Service) Signup(ctx context.Context, in SignupInput) (*TokenPair, *user
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO auth.sessions (id, user_id, tenant_id, ip, user_agent)
-		VALUES ($1, $2, $3, NULLIF($4,'')::inet, $5)
-	`, sessionID, u.ID, tenant.ID, ipArg, in.UserAgent); err != nil {
+		VALUES ($1, $2, NULL, NULLIF($3,'')::inet, $4)
+	`, sessionID, u.ID, ipArg, in.UserAgent); err != nil {
 		return nil, nil, nil, err
 	}
-	access, exp, err := s.tokens.IssueAccess(u.ID, tenant.ID, sessionID, "")
+	access, exp, err := s.tokens.IssueAccess(u.ID, uuid.Nil, sessionID, "")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -216,26 +159,23 @@ func (s *Service) Signup(ctx context.Context, in SignupInput) (*TokenPair, *user
 		RefreshToken: refreshRaw,
 		SessionID:    sessionID,
 		UserID:       u.ID,
-	}, u, tenant, nil
+	}, u, nil, nil
 }
 
-// derivePersonalTenant generates a slug + name for the auto-created
-// personal workspace. Slug is hex-suffixed so collisions are vanishingly
-// rare; name falls back to the email local-part if no display_name was
-// supplied.
-func derivePersonalTenant(email, displayName string) (slug, name string) {
-	suffix := strings.ReplaceAll(uuid.New().String(), "-", "")[:12]
-	slug = "personal-" + suffix
-	base := strings.TrimSpace(displayName)
-	if base == "" {
-		if at := strings.Index(email, "@"); at > 0 {
-			base = email[:at]
-		} else {
-			base = "user"
-		}
+// SwitchTenant mints a token pair scoped to tenantID if the user is a member; ErrForbidden otherwise.
+func (s *Service) SwitchTenant(ctx context.Context, userID, tenantID uuid.UUID, ip, ua string) (*TokenPair, error) {
+	var member bool
+	if err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM rbac.user_roles WHERE user_id = $1 AND tenant_id = $2
+		)
+	`, userID, tenantID).Scan(&member); err != nil {
+		return nil, err
 	}
-	name = base + "'s workspace"
-	return slug, name
+	if !member {
+		return nil, errs.ErrForbidden.WithDetail("not a member of this tenant")
+	}
+	return s.IssuePair(ctx, userID, tenantID, ip, ua, "tenant_switch")
 }
 
 func (s *Service) Login(ctx context.Context, in LoginInput) (*TokenPair, error) {
@@ -276,10 +216,18 @@ func (s *Service) IssuePair(ctx context.Context, userID, tenantID uuid.UUID, ip,
 	if ip != "" {
 		ipArg = ip
 	}
+	// uuid.Nil = tenant-less: store NULL (the zero UUID would violate the FK).
+	var tenantArg any
+	var tenantPtr *uuid.UUID
+	if tenantID != uuid.Nil {
+		t := tenantID
+		tenantArg = t
+		tenantPtr = &t
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO auth.sessions (id, user_id, tenant_id, ip, user_agent)
 		VALUES ($1, $2, $3, NULLIF($4,'')::inet, $5)
-	`, sessionID, userID, tenantID, ipArg, ua); err != nil {
+	`, sessionID, userID, tenantArg, ipArg, ua); err != nil {
 		return nil, err
 	}
 	access, exp, err := s.tokens.IssueAccess(userID, tenantID, sessionID, "")
@@ -301,7 +249,7 @@ func (s *Service) IssuePair(ctx context.Context, userID, tenantID uuid.UUID, ip,
 		method = "unknown"
 	}
 	if err := audit.Record(ctx, tx, audit.Event{
-		TenantID:     &tenantID,
+		TenantID:     tenantPtr,
 		ActorUserID:  &userID,
 		ActorType:    "user",
 		Action:       "auth.login_succeeded",
@@ -323,6 +271,7 @@ func (s *Service) IssuePair(ctx context.Context, userID, tenantID uuid.UUID, ip,
 		RefreshToken: refreshRaw,
 		SessionID:    sessionID,
 		UserID:       userID,
+		TenantID:     tenantPtr,
 	}, nil
 }
 
@@ -347,7 +296,7 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (*TokenPair, err
 		expiresAt  time.Time
 		sessionRev *time.Time
 		userID     uuid.UUID
-		tenantID   uuid.UUID
+		tenantPtr  *uuid.UUID // NULL for a tenant-less session
 	)
 	row := tx.QueryRow(ctx, `
 		SELECT rt.id, rt.session_id, rt.used_at, rt.expires_at,
@@ -357,7 +306,7 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (*TokenPair, err
 		WHERE rt.token_hash = $1
 		FOR UPDATE OF rt
 	`, hash)
-	if err := row.Scan(&id, &sessionID, &usedAt, &expiresAt, &sessionRev, &userID, &tenantID); err != nil {
+	if err := row.Scan(&id, &sessionID, &usedAt, &expiresAt, &sessionRev, &userID, &tenantPtr); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrUnauthorized.WithDetail("unknown refresh token")
 		}
@@ -368,6 +317,11 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (*TokenPair, err
 	}
 	if time.Now().After(expiresAt) {
 		return nil, errs.ErrUnauthorized.WithDetail("refresh token expired")
+	}
+	// uuid.Nil = tenant-less session; preserved across refresh.
+	var tenantID uuid.UUID
+	if tenantPtr != nil {
+		tenantID = *tenantPtr
 	}
 	if usedAt != nil {
 		// Reuse — assume theft. Revoke the session, write an audit row,
@@ -419,6 +373,7 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (*TokenPair, err
 		RefreshToken: newRaw,
 		SessionID:    sessionID,
 		UserID:       userID,
+		TenantID:     tenantPtr,
 	}, nil
 }
 
