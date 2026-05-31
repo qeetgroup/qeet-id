@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/qeetgroup/qeet-identity/internal/audit"
+	"github.com/qeetgroup/qeet-identity/internal/platform/dbutil"
 	"github.com/qeetgroup/qeet-identity/internal/platform/errs"
 	"github.com/qeetgroup/qeet-identity/internal/platform/httpx"
 )
@@ -72,12 +73,7 @@ func (r *Repository) Get(ctx context.Context, tenantID uuid.UUID) (*Policy, erro
 	p.IPAllowlist = allow
 	p.IPDenylist = deny
 	p.SessionMaxAge = sessionAge
-	if len(settings) > 0 {
-		_ = json.Unmarshal(settings, &p.Settings)
-	}
-	if p.Settings == nil {
-		p.Settings = map[string]any{}
-	}
+	p.Settings = dbutil.Metadata(settings)
 	return &p, nil
 }
 

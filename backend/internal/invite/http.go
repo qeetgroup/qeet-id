@@ -1,6 +1,7 @@
 package invite
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -12,9 +13,14 @@ import (
 	"github.com/qeetgroup/qeet-identity/internal/platform/httpx"
 )
 
+// tokenIssuer is the slice of auth.Service this handler needs (mockable).
+type tokenIssuer interface {
+	IssuePair(ctx context.Context, userID, tenantID uuid.UUID, ip, ua, method string) (*auth.TokenPair, error)
+}
+
 type Handler struct {
 	Service     *Service
-	AuthService *auth.Service
+	AuthService tokenIssuer
 	Validate    *validator.Validate
 }
 

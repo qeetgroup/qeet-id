@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/qeetgroup/qeet-identity/internal/audit"
+	"github.com/qeetgroup/qeet-identity/internal/platform/dbutil"
 	"github.com/qeetgroup/qeet-identity/internal/platform/errs"
 	"github.com/qeetgroup/qeet-identity/internal/platform/httpx"
 )
@@ -53,12 +54,7 @@ func (r *Repository) Get(ctx context.Context, tenantID uuid.UUID) (*Branding, er
 	if err != nil {
 		return nil, err
 	}
-	if len(settings) > 0 {
-		_ = json.Unmarshal(settings, &b.Settings)
-	}
-	if b.Settings == nil {
-		b.Settings = map[string]any{}
-	}
+	b.Settings = dbutil.Metadata(settings)
 	return &b, nil
 }
 

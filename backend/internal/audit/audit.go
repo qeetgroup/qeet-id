@@ -36,6 +36,40 @@ type Event struct {
 	Metadata     map[string]any
 }
 
+// Actor is the request-scoped provenance (who/where) a service attaches to the
+// audit rows it writes, so handlers can hand it off without building Events.
+type Actor struct {
+	UserID    *uuid.UUID
+	Type      string
+	IP        string
+	UserAgent string
+	RequestID string
+}
+
+// Event builds an audit Event for a tenant-scoped action from this actor.
+func (a Actor) Event(tenantID uuid.UUID, action, resourceType string, resourceID uuid.UUID, metadata map[string]any) Event {
+	e := a.PlatformEvent(action, resourceType, resourceID, metadata)
+	tid := tenantID
+	e.TenantID = &tid
+	return e
+}
+
+// PlatformEvent builds an audit Event not scoped to any tenant (platform chain).
+func (a Actor) PlatformEvent(action, resourceType string, resourceID uuid.UUID, metadata map[string]any) Event {
+	rid := resourceID
+	return Event{
+		ActorUserID:  a.UserID,
+		ActorType:    a.Type,
+		Action:       action,
+		ResourceType: resourceType,
+		ResourceID:   &rid,
+		IP:           a.IP,
+		UserAgent:    a.UserAgent,
+		RequestID:    a.RequestID,
+		Metadata:     metadata,
+	}
+}
+
 // canonicalRow is the deterministic serialisation hashed for the chain.
 // Field order is fixed by struct declaration; nested maps in Metadata are
 // sorted by encoding/json. Changing this struct breaks all existing

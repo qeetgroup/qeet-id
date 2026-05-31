@@ -92,16 +92,16 @@ func (s *Service) ListProviders(ctx context.Context, tenantID uuid.UUID) ([]Prov
 	return out, nil
 }
 
-func (s *Service) ListIdentities(ctx context.Context, userID uuid.UUID) ([]ExternalIdentity, error) {
-	// Mirror users.deleted_at — a soft-deleted user's linked identities
-	// must not surface in self-service or admin lookups.
+func (s *Service) ListIdentities(ctx context.Context, userID, tenantID uuid.UUID) ([]ExternalIdentity, error) {
+	// Tenant-scoped so one tenant can't read another's linked identities;
+	// the deleted_at join keeps soft-deleted users out of admin lookups.
 	rows, err := s.pool.Query(ctx, `
 		SELECT ei.id, ei.user_id, ei.tenant_id, ei.provider, ei.subject, ei.email, ei.linked_at
 		FROM "user".external_identities ei
 		JOIN "user".users u ON u.id = ei.user_id
-		WHERE ei.user_id = $1 AND u.deleted_at IS NULL
+		WHERE ei.user_id = $1 AND ei.tenant_id = $2 AND u.deleted_at IS NULL
 		ORDER BY ei.linked_at DESC
-	`, userID)
+	`, userID, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -117,8 +117,9 @@ func (s *Service) ListIdentities(ctx context.Context, userID uuid.UUID) ([]Exter
 	return out, nil
 }
 
-func (s *Service) Unlink(ctx context.Context, id uuid.UUID) error {
-	ct, err := s.pool.Exec(ctx, `DELETE FROM "user".external_identities WHERE id = $1`, id)
+// Unlink is tenant-scoped so an identity can only be removed within its tenant.
+func (s *Service) Unlink(ctx context.Context, id, tenantID uuid.UUID) error {
+	ct, err := s.pool.Exec(ctx, `DELETE FROM "user".external_identities WHERE id = $1 AND tenant_id = $2`, id, tenantID)
 	if err != nil {
 		return err
 	}
@@ -143,11 +144,17 @@ func (h *Handler) Mount(r chi.Router) {
 }
 
 func (h *Handler) upsertProvider(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := httpx.RequireTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
 	var in CreateProviderInput
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
+	in.TenantID = tenantID // scope comes from the principal, never the body
 	p, err := h.Service.UpsertProvider(r.Context(), in)
 	if err != nil {
 		httpx.WriteError(w, r, err)
@@ -162,7 +169,16 @@ func (h *Handler) listProviders(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid tenantID"))
 		return
 	}
-	out, err := h.Service.ListProviders(r.Context(), tid)
+	tenantID, err := httpx.RequireTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	if tid != tenantID {
+		httpx.WriteError(w, r, errs.ErrForbidden.WithDetail("tenant mismatch"))
+		return
+	}
+	out, err := h.Service.ListProviders(r.Context(), tenantID)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
@@ -176,7 +192,12 @@ func (h *Handler) listIdentities(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid userID"))
 		return
 	}
-	out, err := h.Service.ListIdentities(r.Context(), uid)
+	tenantID, err := httpx.RequireTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	out, err := h.Service.ListIdentities(r.Context(), uid, tenantID)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
@@ -190,7 +211,12 @@ func (h *Handler) unlink(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid id"))
 		return
 	}
-	if err := h.Service.Unlink(r.Context(), id); err != nil {
+	tenantID, err := httpx.RequireTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	if err := h.Service.Unlink(r.Context(), id, tenantID); err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
