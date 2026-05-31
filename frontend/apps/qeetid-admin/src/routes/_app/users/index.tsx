@@ -65,7 +65,7 @@ import { useTenantId } from "@/lib/auth";
 import { exportToCsv, exportToJson, type CsvColumn } from "@/lib/export";
 import { useListView } from "@/lib/list-view";
 
-export const Route = createFileRoute("/_app/users")({ component: UsersPage });
+export const Route = createFileRoute("/_app/users/")({ component: UsersPage });
 
 type User = {
   id: string;

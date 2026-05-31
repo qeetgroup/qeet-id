@@ -588,7 +588,7 @@ func (r *Reader) weeklyActivity8w(ctx context.Context, tid uuid.UUID, out *Overv
 		),
 		d AS (
 			SELECT
-				date_trunc('week', created_at) AS week_start,
+				lat.dw AS week_start,
 				AVG(daily_users)::bigint AS dau_avg
 			FROM (
 				SELECT

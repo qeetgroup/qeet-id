@@ -1,4 +1,4 @@
-.PHONY: tidy build run test test-integration sqlc-generate sqlc-schema migrate-up migrate-down migrate-force migrate-down-all \
+.PHONY: tidy build run test test-integration seed seed-reset sqlc-generate sqlc-schema migrate-up migrate-down migrate-force migrate-down-all \
         db-reset db-wipe db-psql lint docker-up docker-down
 
 # Auto-load .env so make targets see the same env the Go process expects.
@@ -27,6 +27,15 @@ build:
 
 run:
 	$(GO) run ./cmd/server
+
+# Populate the DB with a demo workspace for browsing the admin UI.
+# seed-reset wipes existing data first (dev only). All users share the same
+# password printed at the end.
+seed:
+	$(GO) run ./cmd/seed
+
+seed-reset:
+	$(GO) run ./cmd/seed -reset
 
 test:
 	$(GO) test ./...

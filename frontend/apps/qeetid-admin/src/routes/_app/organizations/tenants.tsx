@@ -57,6 +57,7 @@ import { ListToolbar, SortHeader } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { ApiError, api } from "@/lib/api";
 import { tokenStore } from "@/lib/api";
+import { switchToTenant } from "@/lib/auth";
 import { exportToCsv, exportToJson, type CsvColumn } from "@/lib/export";
 import { useListView } from "@/lib/list-view";
 
@@ -243,11 +244,7 @@ function TenantsPage() {
                           variant="ghost"
                           size="sm"
                           disabled={t.id === currentTenantId}
-                          onClick={() => {
-                            tokenStore.setTenantId(t.id);
-                            qc.invalidateQueries();
-                            window.location.href = "/dashboard";
-                          }}
+                          onClick={() => void switchToTenant(t.id)}
                         >
                           Switch
                         </Button>
@@ -345,16 +342,30 @@ type CreateTenantSheetProps = {
   onCreated: () => void;
 };
 
+type CreateTenantResponse = {
+  tenant: Tenant;
+  tenant_id: string;
+  access_token?: string;
+  refresh_token?: string;
+};
+
 function CreateTenantSheet({ open, onOpenChange, onCreated }: CreateTenantSheetProps) {
   const [plan, setPlan] = useState("free");
   const createM = useMutation({
     mutationFn: (body: { slug: string; name: string; plan: string; region: string }) =>
-      api<Tenant>("/v1/tenants", { method: "POST", body }),
-    onSuccess: () => {
+      api<CreateTenantResponse>("/v1/tenants", { method: "POST", body }),
+    onSuccess: (res) => {
       onCreated();
       onOpenChange(false);
+      // Now owner of this workspace; persist the scoped token and switch in.
+      if (res.access_token && res.refresh_token) {
+        tokenStore.set(res.access_token);
+        tokenStore.setRefresh(res.refresh_token);
+      }
+      tokenStore.setTenantId(res.tenant_id);
+      window.location.assign("/dashboard");
     },
-    meta: { successMessage: "Tenant created" },
+    meta: { successMessage: "Workspace created" },
   });
 
   return (
@@ -374,9 +385,9 @@ function CreateTenantSheet({ open, onOpenChange, onCreated }: CreateTenantSheetP
           }}
         >
           <SheetHeader>
-            <SheetTitle>New tenant</SheetTitle>
+            <SheetTitle>New workspace</SheetTitle>
             <SheetDescription>
-              Note: this admin-scoped flow does NOT auto-assign you as owner. Use the public signup endpoint for that.
+              You&apos;ll become the owner of this workspace and switch into it once it&apos;s created.
             </SheetDescription>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto p-4">

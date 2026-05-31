@@ -24,14 +24,6 @@ type User = {
   status: string;
 };
 
-type Tenant = {
-  id: string;
-  slug: string;
-  name: string;
-  plan: string;
-  region: string;
-};
-
 type LoginInput = { email: string; password: string };
 type LoginResponse = TokenPair & { tenant_id?: string };
 
@@ -41,6 +33,8 @@ export function useLogin() {
     mutationFn: (in_: LoginInput) =>
       api<LoginResponse>("/v1/auth/login", { method: "POST", body: in_, anonymous: true }),
     onSuccess: (pair) => {
+      // Clear prior session so a tenant-less/different user doesn't inherit a stale workspace.
+      tokenStore.clear();
       tokenStore.set(pair.access_token);
       tokenStore.setRefresh(pair.refresh_token);
       if (pair.tenant_id) tokenStore.setTenantId(pair.tenant_id);
@@ -99,11 +93,10 @@ type SignupInput = {
   display_name?: string;
 };
 
+// Signup is now tenant-less: the response carries the new user + a token pair
+// but NO tenant. The user creates their first workspace from the dashboard.
 type SignupResponse = TokenPair & {
   user: User;
-  tenant: Tenant;
-  tenant_id: string;
-  roles: string[];
 };
 
 export function useSignup() {
@@ -112,13 +105,26 @@ export function useSignup() {
     mutationFn: (in_: SignupInput) =>
       api<SignupResponse>("/v1/auth/signup", { method: "POST", body: in_, anonymous: true }),
     onSuccess: (res) => {
+      // Tenant-less session; clear any stale tenant id first.
+      tokenStore.clear();
       tokenStore.set(res.access_token);
       tokenStore.setRefresh(res.refresh_token);
-      tokenStore.setTenantId(res.tenant.id);
       tokenStore.setUserId(res.user_id);
       navigate({ to: "/dashboard" });
     },
   });
+}
+
+// Switch workspace: mint a token scoped to a tenant the user belongs to, persist it, reload.
+export async function switchToTenant(tenantId: string): Promise<void> {
+  const res = await api<TokenPair & { tenant_id: string }>("/v1/auth/switch-tenant", {
+    method: "POST",
+    body: { tenant_id: tenantId },
+  });
+  tokenStore.set(res.access_token);
+  tokenStore.setRefresh(res.refresh_token);
+  tokenStore.setTenantId(res.tenant_id);
+  if (typeof window !== "undefined") window.location.assign("/dashboard");
 }
 
 export function useLogout() {

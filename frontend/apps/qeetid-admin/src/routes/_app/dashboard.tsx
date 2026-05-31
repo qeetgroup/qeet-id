@@ -1,4 +1,5 @@
 import {
+  Button,
   Card,
   CardContent,
   CardDescription,
@@ -16,11 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@qeetrix/ui";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   ActivityIcon,
+  Building2Icon,
   GaugeIcon,
   KeyRoundIcon,
+  PlusIcon,
   RepeatIcon,
   ShieldAlertIcon,
   UserCheckIcon,
@@ -28,6 +31,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { useTenantId } from "@/lib/auth";
 import { useAnalyticsOverview, formatShortDate } from "@/lib/analytics";
 import { OnboardingChecklist } from "@/features/dashboard/components/onboarding-checklist";
 import { PasskeyPromptCard } from "@/features/dashboard/components/passkey-prompt-card";
@@ -218,7 +222,39 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
+// Tenant-less users (fresh signup) get the create-workspace prompt instead of the tenant-scoped dashboard.
 function DashboardPage() {
+  const tenantId = useTenantId();
+  if (!tenantId) return <NoWorkspaceOnboarding />;
+  return <DashboardContent />;
+}
+
+function NoWorkspaceOnboarding() {
+  const navigate = useNavigate();
+  return (
+    <div className="flex min-w-0 flex-1 items-center justify-center py-16">
+      <Card className="w-full max-w-md text-center">
+        <CardHeader>
+          <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-muted">
+            <Building2Icon className="size-6 text-muted-foreground" />
+          </div>
+          <CardTitle className="mt-2">Create your first workspace</CardTitle>
+          <CardDescription>
+            Your account isn&apos;t tied to a workspace yet. Create one to start managing
+            users, configuring auth, and inviting teammates — you&apos;ll be its owner.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex justify-center">
+          <Button onClick={() => navigate({ to: "/organizations/tenants" })}>
+            <PlusIcon /> Create workspace
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function DashboardContent() {
   const { data, isLoading, isError, error } = useAnalyticsOverview();
   const [range, setRange] = useState<RangeKey>("14d");
   const take = range === "7d" ? 7 : 14;

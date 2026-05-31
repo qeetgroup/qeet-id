@@ -25,10 +25,40 @@ import {
   SheetHeader,
   SheetTitle,
   Skeleton,
+  cn,
 } from "@qeetrix/ui";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2Icon, NetworkIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import {
+  Apple,
+  Atlassian,
+  Auth0,
+  Bitbucket,
+  Box,
+  Coinbase,
+  Discord,
+  Dropbox,
+  Facebook,
+  Figma,
+  Github,
+  Gitlab,
+  Google,
+  Kakao,
+  Line,
+  Linkedin,
+  Microsoft,
+  Naver,
+  Notion,
+  Okta,
+  Reddit,
+  Salesforce,
+  Slack,
+  Spotify,
+  Twitch,
+  X,
+  Zoom,
+} from "@thesvg/react";
 import { useState } from "react";
 
 import { PageHeader } from "@/components/page-header";
@@ -46,12 +76,71 @@ type Provider = {
   updated_at: string;
 };
 
-const KNOWN_PROVIDERS = [
-  { id: "google", label: "Google", discovery: "https://accounts.google.com/.well-known/openid-configuration" },
-  { id: "github", label: "GitHub", discovery: "" },
-  { id: "microsoft", label: "Microsoft", discovery: "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration" },
-  { id: "apple", label: "Apple", discovery: "https://appleid.apple.com/.well-known/openid-configuration" },
+// iconClass handles dark-mode legibility: black-only marks (GitHub, X) invert in
+// dark, white-only marks (Apple, Notion) invert in light. `fill` is set only for
+// icons that ship without a baked color (Facebook) so they take currentColor.
+// discovery is pre-filled for providers with a stable OIDC well-known endpoint.
+type KnownProvider = {
+  id: string;
+  label: string;
+  // Either a @thesvg icon component, or a pair of theme-aware logo srcs (Qeet).
+  Icon?: typeof Google;
+  logoLight?: string;
+  logoDark?: string;
+  iconClass: string;
+  fill?: string;
+  discovery: string;
+};
+
+const KNOWN_PROVIDERS: KnownProvider[] = [
+  { id: "qeet", label: "Qeet", logoLight: "/qeet-logo-on-light.svg", logoDark: "/qeet-logo-on-dark.svg", iconClass: "", discovery: "" },
+  { id: "google", label: "Google", Icon: Google, iconClass: "", discovery: "https://accounts.google.com/.well-known/openid-configuration" },
+  { id: "github", label: "GitHub", Icon: Github, iconClass: "dark:invert", discovery: "" },
+  { id: "microsoft", label: "Microsoft", Icon: Microsoft, iconClass: "", discovery: "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration" },
+  { id: "apple", label: "Apple", Icon: Apple, iconClass: "invert dark:invert-0", discovery: "https://appleid.apple.com/.well-known/openid-configuration" },
+  { id: "facebook", label: "Facebook", Icon: Facebook, iconClass: "text-[#1877F2]", fill: "currentColor", discovery: "" },
+  { id: "x", label: "X (Twitter)", Icon: X, iconClass: "dark:invert", discovery: "" },
+  { id: "linkedin", label: "LinkedIn", Icon: Linkedin, iconClass: "", discovery: "https://www.linkedin.com/oauth/.well-known/openid-configuration" },
+  { id: "gitlab", label: "GitLab", Icon: Gitlab, iconClass: "", discovery: "https://gitlab.com/.well-known/openid-configuration" },
+  { id: "bitbucket", label: "Bitbucket", Icon: Bitbucket, iconClass: "", discovery: "" },
+  { id: "discord", label: "Discord", Icon: Discord, iconClass: "", discovery: "" },
+  { id: "slack", label: "Slack", Icon: Slack, iconClass: "", discovery: "https://slack.com/.well-known/openid-configuration" },
+  { id: "twitch", label: "Twitch", Icon: Twitch, iconClass: "", discovery: "https://id.twitch.tv/oauth2/.well-known/openid-configuration" },
+  { id: "spotify", label: "Spotify", Icon: Spotify, iconClass: "", discovery: "" },
+  { id: "reddit", label: "Reddit", Icon: Reddit, iconClass: "", discovery: "" },
+  { id: "atlassian", label: "Atlassian", Icon: Atlassian, iconClass: "", discovery: "" },
+  { id: "salesforce", label: "Salesforce", Icon: Salesforce, iconClass: "", discovery: "https://login.salesforce.com/.well-known/openid-configuration" },
+  { id: "okta", label: "Okta", Icon: Okta, iconClass: "", discovery: "" },
+  { id: "auth0", label: "Auth0", Icon: Auth0, iconClass: "", discovery: "" },
+  { id: "notion", label: "Notion", Icon: Notion, iconClass: "invert dark:invert-0", discovery: "" },
+  { id: "figma", label: "Figma", Icon: Figma, iconClass: "", discovery: "" },
+  { id: "zoom", label: "Zoom", Icon: Zoom, iconClass: "", discovery: "" },
+  { id: "box", label: "Box", Icon: Box, iconClass: "", discovery: "" },
+  { id: "dropbox", label: "Dropbox", Icon: Dropbox, iconClass: "", discovery: "" },
+  { id: "line", label: "LINE", Icon: Line, iconClass: "", discovery: "https://access.line.me/.well-known/openid-configuration" },
+  { id: "kakao", label: "Kakao", Icon: Kakao, iconClass: "", discovery: "https://kauth.kakao.com/.well-known/openid-configuration" },
+  { id: "naver", label: "Naver", Icon: Naver, iconClass: "", discovery: "" },
+  { id: "coinbase", label: "Coinbase", Icon: Coinbase, iconClass: "", discovery: "" },
 ];
+
+// Qeet ships as a full-bleed app-icon (its own background); the rest sit on a
+// neutral tile. Theme-aware logo swap mirrors the favicons in __root.tsx.
+function ProviderChip({ provider }: { provider: KnownProvider }) {
+  if (provider.logoLight) {
+    return (
+      <span className="size-9 shrink-0 overflow-hidden rounded-lg border">
+        <img src={provider.logoLight} alt="" className="size-full object-cover dark:hidden" />
+        <img src={provider.logoDark} alt="" className="hidden size-full object-cover dark:block" />
+      </span>
+    );
+  }
+  const Icon = provider.Icon;
+  return (
+    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-muted/40">
+      {Icon && <Icon className={cn("size-5", provider.iconClass)} {...(provider.fill ? { fill: provider.fill } : {})} />}
+    </span>
+  );
+}
 
 function SocialPage() {
   const tenantId = useTenantId();
@@ -78,16 +167,19 @@ function SocialPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {KNOWN_PROVIDERS.map((p) => {
           const cfg = configured.get(p.id);
           return (
             <Card key={p.id}>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">{p.label}</CardTitle>
-                    <CardDescription>{cfg ? "Configured" : "Not configured"}</CardDescription>
+                  <div className="flex items-center gap-3">
+                    <ProviderChip provider={p} />
+                    <div>
+                      <CardTitle className="text-base">{p.label}</CardTitle>
+                      <CardDescription>{cfg ? "Configured" : "Not configured"}</CardDescription>
+                    </div>
                   </div>
                   {cfg ? (
                     cfg.enabled ? <Badge variant="success">Enabled</Badge> : <Badge variant="muted">Disabled</Badge>
@@ -182,7 +274,17 @@ function ConfigureProviderSheet({ provider, tenantId, existing, onClose, onSaved
           }}
         >
           <SheetHeader>
-            <SheetTitle>Configure {meta?.label ?? provider}</SheetTitle>
+            <SheetTitle className="flex items-center gap-2">
+              {meta?.logoLight ? (
+                <>
+                  <img src={meta.logoLight} alt="" className="size-5 dark:hidden" />
+                  <img src={meta.logoDark} alt="" className="hidden size-5 dark:block" />
+                </>
+              ) : (
+                meta?.Icon && <meta.Icon className={cn("size-5", meta.iconClass)} {...(meta.fill ? { fill: meta.fill } : {})} />
+              )}
+              Configure {meta?.label ?? provider}
+            </SheetTitle>
             <SheetDescription>
               Paste the OAuth client credentials from your IdP&apos;s developer console.
             </SheetDescription>

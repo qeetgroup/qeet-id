@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/qeetgroup/qeet-identity/internal/analytics"
 	"github.com/qeetgroup/qeet-identity/internal/audit"
 	"github.com/qeetgroup/qeet-identity/internal/auth"
 	"github.com/qeetgroup/qeet-identity/internal/group"
@@ -168,5 +169,17 @@ func TestGroupServiceAuditedFlow(t *testing.T) {
 	}
 	if err := svc.Delete(ctx, g.ID, tenantID, actor); !errors.Is(err, errs.ErrNotFound) {
 		t.Fatalf("second delete should be NotFound, got %v", err)
+	}
+}
+
+// Every analytics projection must run against the real schema (this catches
+// queries that reference missing/out-of-scope columns, like the weekly-
+// activity bug). An empty tenant is fine — we only assert it doesn't error.
+func TestAnalyticsOverviewRuns(t *testing.T) {
+	requireDB(t)
+	ctx := context.Background()
+	tenantID := createTenant(t, ctx, uniqueSlug("an"))
+	if _, err := analytics.NewReader(testPool).Overview(ctx, tenantID); err != nil {
+		t.Fatalf("analytics overview: %v", err)
 	}
 }
