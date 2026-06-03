@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"log/slog"
 	stdhttp "net/http"
@@ -49,6 +51,7 @@ import (
 	"github.com/qeetgroup/qeet-identity/internal/retention"
 	"github.com/qeetgroup/qeet-identity/internal/saml"
 	"github.com/qeetgroup/qeet-identity/internal/scim"
+	"github.com/qeetgroup/qeet-identity/internal/secret"
 	"github.com/qeetgroup/qeet-identity/internal/social"
 	"github.com/qeetgroup/qeet-identity/internal/tenant"
 	"github.com/qeetgroup/qeet-identity/internal/user"
@@ -76,13 +79,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Safety guard: CSRF_DISABLED is a dev convenience for Postman/curl
-	// testing — it must never be honoured outside SERVICE_ENV=dev. Failing
-	// loudly here is cheaper than discovering a production deploy has CSRF
-	// off because someone copied a .env file.
-	if cfg.CSRFDisabled && cfg.ServiceEnv != "dev" {
-		slog.Error("CSRF_DISABLED is only permitted when SERVICE_ENV=dev — refusing to start",
-			"service_env", cfg.ServiceEnv)
+	// Production-safety gate: refuse to start with dev-only escape hatches or
+	// insecure defaults (CSRF off, dev-trust headers, placeholder JWT_SECRET,
+	// missing signing key, wildcard origins, localhost base URL) when not in
+	// dev. Cheaper than discovering it after a bad deploy.
+	if err := cfg.Validate(); err != nil {
+		slog.Error("refusing to start: "+err.Error(), "service_env", cfg.ServiceEnv)
 		os.Exit(1)
 	}
 
@@ -201,7 +203,28 @@ type namedWorker struct {
 // HTTP dependency set plus the background workers to supervise. Keeping all
 // wiring here lets main() focus on process lifecycle.
 func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) (httpapi.Deps, []namedWorker) {
-	issuer := tokens.NewIssuer(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+	signingKeyPEM := cfg.JWTSigningKey
+	if signingKeyPEM == "" {
+		if cfg.ServiceEnv != "dev" {
+			slog.Error("JWT_SIGNING_KEY is required outside dev (PEM-encoded EC P-256 private key)")
+			os.Exit(1)
+		}
+		k, err := tokens.GenerateES256KeyPEM()
+		if err != nil {
+			slog.Error("generate ephemeral signing key", "err", err)
+			os.Exit(1)
+		}
+		signingKeyPEM = k
+		slog.Warn("JWT_SIGNING_KEY unset — generated an ephemeral ES256 key; issued tokens will not survive a restart (dev only)")
+	}
+	issuer, err := tokens.NewIssuer(signingKeyPEM, cfg.JWTIssuer, cfg.JWTAudience, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+	if err != nil {
+		slog.Error("init token issuer", "err", err)
+		os.Exit(1)
+	}
+	if n := issuer.AddRetiredKeysPEM(cfg.JWTRetiredKeys); n > 0 {
+		slog.Info("registered retired signing keys for rotation grace", "count", n)
+	}
 	verifier := &httpx.AuthVerifier{
 		Tokens:          issuer,
 		DevTrustHeaders: cfg.AuthDevTrustHeaders,
@@ -221,7 +244,16 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 	emailTemplateService := emailtemplate.NewService(pool)
 	policyRepo := policy.NewRepository(pool)
 
-	sender := notifier.LogSender{}
+	sender := notifier.New(notifier.Config{
+		SMTPHost:         cfg.SMTPHost,
+		SMTPPort:         cfg.SMTPPort,
+		SMTPUsername:     cfg.SMTPUsername,
+		SMTPPassword:     cfg.SMTPPassword,
+		SMTPFrom:         cfg.SMTPFrom,
+		TwilioAccountSID: cfg.TwilioAccountSID,
+		TwilioAuthToken:  cfg.TwilioAuthToken,
+		TwilioFrom:       cfg.TwilioFrom,
+	})
 	verifyService := verification.NewService(pool, sender, 10*time.Minute)
 	recoveryService := recovery.NewService(pool, sender, time.Hour, cfg.AppBaseURL)
 	retentionService := retention.NewService(pool)
@@ -253,6 +285,30 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 	socialService := social.NewService(pool, authService, cfg.AppBaseURL)
 	groupService := group.NewService(pool)
 	scimService := scim.NewService(pool, userRepo)
+	// Secrets-vault data key: a dedicated key from SECRETS_KEY (independent of
+	// JWT_SECRET), or an ephemeral key in dev when unset. Wrapped in a
+	// KeyProvider so an AWS KMS provider can drop in later (see secret pkg).
+	var secretsKey []byte
+	if cfg.SecretsKey != "" {
+		secretsKey, err = base64.StdEncoding.DecodeString(cfg.SecretsKey)
+		if err != nil {
+			slog.Error("SECRETS_KEY must be base64", "err", err)
+			os.Exit(1)
+		}
+	} else {
+		// Reached only in dev — Validate() requires SECRETS_KEY otherwise.
+		secretsKey = make([]byte, 32)
+		if _, err := rand.Read(secretsKey); err != nil {
+			slog.Error("generate ephemeral secrets key", "err", err)
+			os.Exit(1)
+		}
+		slog.Warn("SECRETS_KEY unset — generated an ephemeral vault key; stored secrets will not survive a restart (dev only)")
+	}
+	secretService, err := secret.NewService(rootCtx, pool, secret.StaticKeyProvider{Key: secretsKey})
+	if err != nil {
+		slog.Error("init secrets vault", "err", err)
+		os.Exit(1)
+	}
 	samlService := saml.NewService(pool, authService, cfg.AppBaseURL)
 	ldapService := ldap.NewService(pool, authService)
 	ipAllowService := ipallow.NewService(pool)
@@ -262,7 +318,7 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 		Tenant:        &tenant.Handler{Repo: tenantRepo, Validate: v, AuthService: authService},
 		User:          &user.Handler{Repo: userRepo, Validate: v, PasswordPolicy: authPolicyService.ValidateForTenant},
 		AuthPolicy:    &authpolicy.Handler{Service: authPolicyService},
-		Auth:          &auth.Handler{Service: authService, Validate: v},
+		Auth:          &auth.Handler{Service: authService, Validate: v, CookieSecure: cfg.ServiceEnv != "dev"},
 		RBAC:          &rbac.Handler{Repo: rbacRepo, Service: rbac.NewService(rbacRepo), Validate: v},
 		Verification:  &verification.Handler{Service: verifyService},
 		Recovery:      &recovery.Handler{Service: recoveryService, AuthService: authService},
@@ -281,23 +337,25 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 		Billing:       &billing.Handler{Service: billingService},
 		Analytics:     &analytics.Handler{Reader: analyticsReader},
 		Outbox:        &outbox.Handler{Reader: outboxReader},
-		OIDC:          &oidc.Handler{Service: oidcService},
-		Passkey:       &passkey.Handler{Service: passkeyService},
-		Social:        &social.Handler{Service: socialService},
+		OIDC:          &oidc.Handler{Service: oidcService, Sessions: authService, Providers: socialService, LoginBaseURL: cfg.LoginBaseURL, CookieSecure: cfg.ServiceEnv != "dev"},
+		Passkey:       &passkey.Handler{Service: passkeyService, CookieSecure: cfg.ServiceEnv != "dev"},
+		Social:        &social.Handler{Service: socialService, CookieSecure: cfg.ServiceEnv != "dev"},
 		Group:         &group.Handler{Service: groupService},
 		SCIM:          &scim.Handler{Service: scimService},
+		Secret:        &secret.Handler{Service: secretService},
 		SAML:          &saml.Handler{Service: samlService},
 		LDAP:          &ldap.Handler{Service: ldapService},
 		IPAllow:       &ipallow.Handler{Service: ipAllowService},
 		Health:        healthHandler,
 		InFlight:      inFlight,
 
-		AuthVerifier:   verifier,
-		AllowedOrigins: cfg.AllowedOrigins(),
-		ServiceName:    cfg.ServiceName,
-		ServiceEnv:     cfg.ServiceEnv,
-		StartedAt:      startedAt,
-		CSRFDisabled:   cfg.CSRFDisabled,
+		AuthVerifier:     verifier,
+		AllowedOrigins:   cfg.AllowedOrigins(),
+		ServiceName:      cfg.ServiceName,
+		ServiceEnv:       cfg.ServiceEnv,
+		StartedAt:        startedAt,
+		CSRFDisabled:     cfg.CSRFDisabled,
+		CSRFCookieDomain: cfg.CSRFCookieDomain,
 	}
 
 	outboxDispatcher := outbox.NewDispatcher(pool, outbox.LogPublisher{}, 2*time.Second, 50)
