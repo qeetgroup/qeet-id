@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
+
+	"github.com/qeetgroup/qeet-identity/internal/platform/tracing"
 )
 
 type Config struct {
@@ -14,6 +16,15 @@ type Config struct {
 	ServiceEnv  string `envconfig:"SERVICE_ENV" default:"dev"`
 	HTTPPort    string `envconfig:"HTTP_PORT" default:"4000"`
 	LogLevel    string `envconfig:"LOG_LEVEL" default:"info"`
+
+	// OTelEndpoint is the OTLP/HTTP collector endpoint for distributed tracing
+	// (e.g. http://otel-collector:4318). Empty disables tracing entirely — no
+	// exporter is built and nothing connects anywhere (a no-op tracer is used),
+	// so the app boots and tests run without a collector present.
+	OTelEndpoint string `envconfig:"OTEL_EXPORTER_OTLP_ENDPOINT" default:""`
+	// OTelSampleRatio is the head sampling ratio for root spans (0..1). 1 keeps
+	// every trace (sensible in dev); lower it in prod to bound export volume.
+	OTelSampleRatio float64 `envconfig:"OTEL_TRACES_SAMPLER_RATIO" default:"1"`
 
 	DBURL      string `envconfig:"DB_URL" required:"true"`
 	DBMinConns int32  `envconfig:"DB_MIN_CONNS" default:"2"`
@@ -34,6 +45,14 @@ type Config struct {
 	// certificate) of previously-active signing keys. They stay verifiable
 	// during the rotation grace window; new tokens are never signed with them.
 	JWTRetiredKeys string `envconfig:"JWT_RETIRED_KEYS" default:""`
+
+	// SAMLIdPKey / SAMLIdPCert are the RSA private key + X.509 certificate (PEM)
+	// used to sign issued SAML assertions when Qeet acts as an IdP (an SSO
+	// source). Empty in dev → an ephemeral self-signed cert is generated at boot
+	// (SPs must re-import metadata after a restart). Set both in prod so the IdP
+	// metadata/cert stay stable across restarts.
+	SAMLIdPKey  string `envconfig:"SAML_IDP_KEY" default:""`
+	SAMLIdPCert string `envconfig:"SAML_IDP_CERT" default:""`
 
 	// SecretsKey is the base64-encoded AES key (16/24/32 bytes) for the
 	// per-tenant secrets vault — independent of JWT_SECRET. Required outside dev
@@ -76,6 +95,18 @@ type Config struct {
 	// RedisURL enables shared (cross-replica) rate limiting, e.g.
 	// redis://:pass@host:6379/0. Empty = in-process limits (single instance).
 	RedisURL string `envconfig:"REDIS_URL" default:""`
+
+	// BreachedPasswordCheck enables breached-password detection (Have I Been
+	// Pwned k-anonymity range API) on every password-setting flow. OFF by
+	// default so dev/CI and offline deploys are unaffected, and FAIL-OPEN at
+	// runtime so a HIBP outage never blocks signups (see internal/platform/hibp).
+	BreachedPasswordCheck bool `envconfig:"BREACHED_PASSWORD_CHECK" default:"false"`
+	// BreachedPasswordMinCount is the breach-sighting threshold at or above
+	// which a password is rejected (1 = reject anything seen even once).
+	BreachedPasswordMinCount int `envconfig:"BREACHED_PASSWORD_MIN_COUNT" default:"1"`
+	// BreachedPasswordAPIURL overrides the Pwned Passwords base URL (tests /
+	// self-hosted mirrors). Empty uses the public api.pwnedpasswords.com.
+	BreachedPasswordAPIURL string `envconfig:"BREACHED_PASSWORD_API_URL" default:""`
 
 	// WebAuthn Relying Party config. Empty values default from AppBaseURL /
 	// ServiceName (see WebAuthnRP). RP_ID is the effective domain (no scheme/
@@ -188,4 +219,15 @@ func (c *Config) WebAuthnRP() (id, displayName string, origins []string) {
 		origins = []string{c.AppBaseURL}
 	}
 	return id, displayName, origins
+}
+
+// TracingConfig builds the tracing setup from the loaded config. An empty
+// OTelEndpoint yields a no-op tracer (tracing disabled).
+func (c *Config) TracingConfig() tracing.Config {
+	return tracing.Config{
+		Endpoint:    c.OTelEndpoint,
+		ServiceName: c.ServiceName,
+		ServiceEnv:  c.ServiceEnv,
+		SampleRatio: c.OTelSampleRatio,
+	}
 }
