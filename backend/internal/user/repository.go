@@ -187,7 +187,13 @@ func (r *Repository) ListByTenant(ctx context.Context, tenantID uuid.UUID, limit
 	)
 	if cursor == "" {
 		rows, err = r.pool.Query(ctx, `
-			SELECT `+userCols+`
+			SELECT `+userCols+`,
+			  COALESCE((
+				SELECT array_agg(r.name ORDER BY r.name)
+				FROM rbac.user_roles ur2
+				JOIN rbac.roles r ON r.id = ur2.role_id
+				WHERE ur2.user_id = "user".users.id AND ur2.tenant_id = $1
+			  ), '{}') AS roles
 			FROM "user".users
 			WHERE deleted_at IS NULL
 			  AND EXISTS (
@@ -204,7 +210,13 @@ func (r *Repository) ListByTenant(ctx context.Context, tenantID uuid.UUID, limit
 			return nil, "", errs.ErrBadRequest.WithDetail("invalid cursor")
 		}
 		rows, err = r.pool.Query(ctx, `
-			SELECT `+userCols+`
+			SELECT `+userCols+`,
+			  COALESCE((
+				SELECT array_agg(r.name ORDER BY r.name)
+				FROM rbac.user_roles ur2
+				JOIN rbac.roles r ON r.id = ur2.role_id
+				WHERE ur2.user_id = "user".users.id AND ur2.tenant_id = $1
+			  ), '{}') AS roles
 			FROM "user".users
 			WHERE deleted_at IS NULL
 			  AND EXISTS (
@@ -226,14 +238,16 @@ func (r *Repository) ListByTenant(ctx context.Context, tenantID uuid.UUID, limit
 		var u User
 		var meta []byte
 		var tid *uuid.UUID
+		var roles []string
 		if err := rows.Scan(&u.ID, &tid, &u.Email, &u.EmailVerifiedAt,
 			&u.Phone, &u.PhoneVerifiedAt, &u.DisplayName, &u.Status, &meta,
-			&u.CreatedAt, &u.UpdatedAt); err != nil {
+			&u.CreatedAt, &u.UpdatedAt, &roles); err != nil {
 			return nil, "", err
 		}
 		if tid != nil {
 			u.TenantID = *tid
 		}
+		u.Roles = roles
 		u.Metadata = parseUserMetadata(meta, u.ID)
 		out = append(out, u)
 	}

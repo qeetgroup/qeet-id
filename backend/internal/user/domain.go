@@ -15,6 +15,9 @@ type User struct {
 	PhoneVerifiedAt *time.Time     `json:"phone_verified_at"`
 	DisplayName     *string        `json:"display_name"`
 	AvatarURL       *string        `json:"avatar_url"`
+	// Roles holds the user's role names in the listed tenant. Populated only by
+	// ListByTenant (the members list); empty on single-user fetches.
+	Roles           []string       `json:"roles,omitempty"`
 	Status          string         `json:"status"`
 	Metadata        map[string]any `json:"metadata"`
 	CreatedAt       time.Time      `json:"created_at"`

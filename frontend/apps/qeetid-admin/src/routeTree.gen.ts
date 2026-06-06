@@ -29,6 +29,7 @@ import { Route as AppSplatRouteImport } from './routes/_app/$'
 import { Route as AppUsersIndexRouteImport } from './routes/_app/users/index'
 import { Route as AppSecurityIndexRouteImport } from './routes/_app/security/index'
 import { Route as AuthSsoCallbackRouteImport } from './routes/_auth/sso.callback'
+import { Route as AuthInviteAcceptRouteImport } from './routes/_auth/invite.accept'
 import { Route as AppUsersSessionsRouteImport } from './routes/_app/users/sessions'
 import { Route as AppUsersInvitationsRouteImport } from './routes/_app/users/invitations'
 import { Route as AppUsersImportRouteImport } from './routes/_app/users/import'
@@ -181,6 +182,11 @@ const AppSecurityIndexRoute = AppSecurityIndexRouteImport.update({
 const AuthSsoCallbackRoute = AuthSsoCallbackRouteImport.update({
   id: '/sso/callback',
   path: '/sso/callback',
+  getParentRoute: () => AuthRoute,
+} as any)
+const AuthInviteAcceptRoute = AuthInviteAcceptRouteImport.update({
+  id: '/invite/accept',
+  path: '/invite/accept',
   getParentRoute: () => AuthRoute,
 } as any)
 const AppUsersSessionsRoute = AppUsersSessionsRouteImport.update({
@@ -517,6 +523,7 @@ export interface FileRoutesByFullPath {
   '/users/import': typeof AppUsersImportRoute
   '/users/invitations': typeof AppUsersInvitationsRoute
   '/users/sessions': typeof AppUsersSessionsRoute
+  '/invite/accept': typeof AuthInviteAcceptRoute
   '/sso/callback': typeof AuthSsoCallbackRoute
   '/security/': typeof AppSecurityIndexRoute
   '/users/': typeof AppUsersIndexRoute
@@ -592,6 +599,7 @@ export interface FileRoutesByTo {
   '/users/import': typeof AppUsersImportRoute
   '/users/invitations': typeof AppUsersInvitationsRoute
   '/users/sessions': typeof AppUsersSessionsRoute
+  '/invite/accept': typeof AuthInviteAcceptRoute
   '/sso/callback': typeof AuthSsoCallbackRoute
   '/security': typeof AppSecurityIndexRoute
   '/users': typeof AppUsersIndexRoute
@@ -670,6 +678,7 @@ export interface FileRoutesById {
   '/_app/users/import': typeof AppUsersImportRoute
   '/_app/users/invitations': typeof AppUsersInvitationsRoute
   '/_app/users/sessions': typeof AppUsersSessionsRoute
+  '/_auth/invite/accept': typeof AuthInviteAcceptRoute
   '/_auth/sso/callback': typeof AuthSsoCallbackRoute
   '/_app/security/': typeof AppSecurityIndexRoute
   '/_app/users/': typeof AppUsersIndexRoute
@@ -747,6 +756,7 @@ export interface FileRouteTypes {
     | '/users/import'
     | '/users/invitations'
     | '/users/sessions'
+    | '/invite/accept'
     | '/sso/callback'
     | '/security/'
     | '/users/'
@@ -822,6 +832,7 @@ export interface FileRouteTypes {
     | '/users/import'
     | '/users/invitations'
     | '/users/sessions'
+    | '/invite/accept'
     | '/sso/callback'
     | '/security'
     | '/users'
@@ -899,6 +910,7 @@ export interface FileRouteTypes {
     | '/_app/users/import'
     | '/_app/users/invitations'
     | '/_app/users/sessions'
+    | '/_auth/invite/accept'
     | '/_auth/sso/callback'
     | '/_app/security/'
     | '/_app/users/'
@@ -1082,6 +1094,13 @@ declare module '@tanstack/react-router' {
       path: '/sso/callback'
       fullPath: '/sso/callback'
       preLoaderRoute: typeof AuthSsoCallbackRouteImport
+      parentRoute: typeof AuthRoute
+    }
+    '/_auth/invite/accept': {
+      id: '/_auth/invite/accept'
+      path: '/invite/accept'
+      fullPath: '/invite/accept'
+      preLoaderRoute: typeof AuthInviteAcceptRouteImport
       parentRoute: typeof AuthRoute
     }
     '/_app/users/sessions': {
@@ -1653,6 +1672,7 @@ interface AuthRouteChildren {
   AuthMagicRoute: typeof AuthMagicRoute
   AuthSignInRoute: typeof AuthSignInRoute
   AuthSignUpRoute: typeof AuthSignUpRoute
+  AuthInviteAcceptRoute: typeof AuthInviteAcceptRoute
   AuthSsoCallbackRoute: typeof AuthSsoCallbackRoute
 }
 
@@ -1661,6 +1681,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthMagicRoute: AuthMagicRoute,
   AuthSignInRoute: AuthSignInRoute,
   AuthSignUpRoute: AuthSignUpRoute,
+  AuthInviteAcceptRoute: AuthInviteAcceptRoute,
   AuthSsoCallbackRoute: AuthSsoCallbackRoute,
 }
 
