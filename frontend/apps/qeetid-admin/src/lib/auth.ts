@@ -29,15 +29,25 @@ type LoginResponse = TokenPair & { tenant_id?: string };
 
 export function useLogin() {
   const navigate = useNavigate();
+
   return useMutation({
     mutationFn: (in_: LoginInput) =>
-      api<LoginResponse>("/v1/auth/login", { method: "POST", body: in_, anonymous: true }),
+      api<LoginResponse>("/v1/auth/login", {
+        method: "POST",
+        body: in_,
+        anonymous: true,
+      }),
+
     onSuccess: (pair) => {
       // Clear prior session so a tenant-less/different user doesn't inherit a stale workspace.
       tokenStore.clear();
       tokenStore.set(pair.access_token);
       tokenStore.setRefresh(pair.refresh_token);
-      if (pair.tenant_id) tokenStore.setTenantId(pair.tenant_id);
+
+      if (pair.tenant_id) {
+        tokenStore.setTenantId(pair.tenant_id);
+      }
+
       tokenStore.setUserId(pair.user_id);
       navigate({ to: "/" });
     },
@@ -51,20 +61,33 @@ export function useLogin() {
  */
 export function useAcceptInvite() {
   const navigate = useNavigate();
+
   return useMutation({
-    mutationFn: (in_: { token: string; password: string; display_name?: string }) =>
-      api<LoginResponse>("/v1/invites/accept", { method: "POST", body: in_, anonymous: true }),
+    mutationFn: (in_: {
+      token: string;
+      password: string;
+      display_name?: string;
+    }) =>
+      api<LoginResponse>("/v1/invites/accept", {
+        method: "POST",
+        body: in_,
+        anonymous: true,
+      }),
+
     onSuccess: (pair) => {
       tokenStore.clear();
       tokenStore.set(pair.access_token);
       tokenStore.setRefresh(pair.refresh_token);
-      if (pair.tenant_id) tokenStore.setTenantId(pair.tenant_id);
+
+      if (pair.tenant_id) {
+        tokenStore.setTenantId(pair.tenant_id);
+      }
+
       tokenStore.setUserId(pair.user_id);
       navigate({ to: "/" });
     },
   });
 }
-
 /**
  * Consume a magic-link token and exchange it for a Qeet ID session.
  * Called by the public /magic landing page. On success the access /
