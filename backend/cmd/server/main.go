@@ -401,10 +401,11 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 	})
 	deps := httpapi.Deps{
 		Tenant:        &tenant.Handler{Repo: tenantRepo, Validate: v, AuthService: authService},
-		User:          &user.Handler{Repo: userRepo, Validate: v, PasswordPolicy: authPolicyService.ValidateForTenant},
+		User:          &user.Handler{Repo: userRepo, Validate: v, PasswordPolicy: authPolicyService.ValidateForTenant, MFA: mfaService},
 		AuthPolicy:    &authpolicy.Handler{Service: authPolicyService},
 		Auth:          &auth.Handler{Service: authService, Validate: v, CookieSecure: cfg.ServiceEnv != "dev"},
 		RBAC:          &rbac.Handler{Repo: rbacRepo, Service: rbac.NewService(rbacRepo), Validate: v},
+		RBACChecker:   rbacRepo,
 		Verification:  &verification.Handler{Service: verifyService},
 		Recovery:      &recovery.Handler{Service: recoveryService, AuthService: authService},
 		Retention:     &retention.Handler{Service: retentionService},

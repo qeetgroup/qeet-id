@@ -46,11 +46,15 @@ import (
 )
 
 type Deps struct {
-	Tenant        *tenant.Handler
-	User          *user.Handler
-	Auth          *auth.Handler
-	AuthPolicy    *authpolicy.Handler
-	RBAC          *rbac.Handler
+	Tenant     *tenant.Handler
+	User       *user.Handler
+	Auth       *auth.Handler
+	AuthPolicy *authpolicy.Handler
+	RBAC       *rbac.Handler
+	// RBACChecker enforces per-route permissions for end-user principals
+	// (the authz policy table lives in permissionMap()). Satisfied by the
+	// rbac repository.
+	RBACChecker   rbac.Checker
 	Verification  *verification.Handler
 	Recovery      *recovery.Handler
 	Retention     *retention.Handler
@@ -209,6 +213,10 @@ func NewRouter(d Deps) http.Handler {
 			r.Use(tenantLimiter.MiddlewareBy("tenant", ratelimit.PerTenant))
 			r.Use(userLimiter.MiddlewareBy("user", ratelimit.PerUser))
 			r.Use(apiKeyLimiter.MiddlewareBy("apikey", ratelimit.PerAPIKey))
+			// RBAC permission enforcement for end-user principals. Gates the
+			// routes listed in permissionMap(); API-key/service actors and
+			// unmapped (self-service / public) routes pass through.
+			r.Use(rbac.Enforce(d.RBACChecker, permissionMap()))
 
 			d.Auth.MountAuthed(r)
 			d.Tenant.Mount(r)

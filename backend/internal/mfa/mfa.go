@@ -268,6 +268,23 @@ func (s *Service) VerifyForLogin(ctx context.Context, userID uuid.UUID, code str
 	return true, nil
 }
 
+// ResetForUser clears every MFA factor for a user — TOTP, recovery codes, and
+// email/SMS OTP factors (OTP codes cascade via FK). This is an admin
+// account-recovery operation (a user locked out of their authenticator); the
+// caller wraps it + an audit row in one transaction.
+func (s *Service) ResetForUser(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	for _, q := range []string{
+		`DELETE FROM auth.mfa_totp WHERE user_id = $1`,
+		`DELETE FROM auth.mfa_recovery_codes WHERE user_id = $1`,
+		`DELETE FROM auth.mfa_otp_factors WHERE user_id = $1`,
+	} {
+		if _, err := tx.Exec(ctx, q, userID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ============================================================
 // Email / SMS OTP factors
 // ============================================================

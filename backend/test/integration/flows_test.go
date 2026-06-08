@@ -179,6 +179,63 @@ func TestLoginMFAEnforcement(t *testing.T) {
 	}
 }
 
+// Admin MFA reset clears a user's enrolled factors so a locked-out user can
+// re-enroll (the service method behind DELETE /v1/users/{id}/mfa).
+func TestAdminResetMFA(t *testing.T) {
+	requireDB(t)
+	ctx := context.Background()
+	users := user.NewRepository(testPool)
+	svc := auth.NewService(testPool, users, mustIssuer())
+	mfaSvc := mfa.NewService(testPool, "qeet", notifier.LogSender{})
+
+	email := uniqueSlug("reset") + "@example.com"
+	if _, _, _, err := svc.Signup(ctx, auth.SignupInput{Email: email, Password: "password123"}); err != nil {
+		t.Fatalf("signup: %v", err)
+	}
+	var userID uuid.UUID
+	if err := testPool.QueryRow(ctx, `SELECT id FROM "user".users WHERE email = $1`, email).Scan(&userID); err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+
+	// Enroll + confirm TOTP.
+	tx, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	enr, err := mfaSvc.StartEnroll(ctx, tx, userID, email)
+	if err != nil {
+		t.Fatalf("totp start: %v", err)
+	}
+	code, err := totp.Code(enr.Secret, time.Now())
+	if err != nil {
+		t.Fatalf("totp code: %v", err)
+	}
+	if _, err := mfaSvc.ConfirmEnroll(ctx, tx, userID, code); err != nil {
+		t.Fatalf("totp confirm: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if ok, err := mfaSvc.IsEnrolled(ctx, userID); err != nil || !ok {
+		t.Fatalf("expected enrolled before reset (ok=%v err=%v)", ok, err)
+	}
+
+	// Admin reset wipes the factors.
+	rtx, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin reset: %v", err)
+	}
+	if err := mfaSvc.ResetForUser(ctx, rtx, userID); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if err := rtx.Commit(ctx); err != nil {
+		t.Fatalf("commit reset: %v", err)
+	}
+	if ok, err := mfaSvc.IsEnrolled(ctx, userID); err != nil || ok {
+		t.Fatalf("expected NOT enrolled after reset (ok=%v err=%v)", ok, err)
+	}
+}
+
 // Hosted-login SSO session: credentials create a session, it resolves to the
 // user, and revoking (hosted logout) invalidates it.
 func TestHostedLoginSession(t *testing.T) {

@@ -5613,6 +5613,36 @@ paths:
         '403': *id007
         '404': *id003
         '422': *id005
+  /v1/users/{id}/mfa:
+    delete:
+      operationId: delete_v1_users_ById_mfa
+      summary: 'Admin: reset a user''s MFA (TOTP, recovery codes, OTP factors)'
+      description: Account-recovery for a locked-out user. Requires the `user.write` permission; audited as `mfa.admin_reset`.
+      tags:
+      - Users
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      security:
+      - bearerAuth: []
+      - apiKeyAuth: []
+      responses:
+        '200':
+          description: MFA reset; returns a confirmation message
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400': *id001
+        '401': *id002
+        '403': *id007
+        '404': *id003
   /v1/users/{id}/purge:
     delete:
       operationId: delete_v1_users_ById_purge
