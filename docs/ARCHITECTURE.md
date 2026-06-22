@@ -27,6 +27,23 @@ importing another domain's concrete service (see `tenant.tokenIssuer`,
 this shape; large protocol handlers (`oidc`, `saml`, `scim`) may split by concern
 (`core.go`/`device.go`/`admin.go`) but keep the same conventions.
 
+## Enforced dependency rules
+
+The layering below is **enforced automatically** by a fitness function in
+[tests/architecture/arch_test.go](../tests/architecture/arch_test.go) (runs in
+`go test ./...` and the CI backend job — it is the source of truth):
+
+- **R1** — `platform/*` is infrastructure and must **not** import `domains/*` or
+  `cmd/*`. The single exception is `platform/http`, the composition root that mounts
+  every domain handler (imported only by `cmd/server`).
+- **R2** — `domains/*` must **not** import `cmd/*` or the `platform/http` router.
+  Importing `platform/httpx` (and other `platform/*` utilities) is expected and fine.
+
+Not yet enforced (tracked for a future tightening, e.g. via `go-arch-lint`):
+forbidding cross-domain imports — several domains legitimately depend on
+`operations/audit`, `identity/users`, etc. today, so this stays interface-mediated
+(above) rather than hard-blocked.
+
 ## Error handling — one envelope
 
 Every HTTP error goes through [platform/errs](platform/errs/errs.go)
