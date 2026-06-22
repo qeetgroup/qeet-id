@@ -119,7 +119,7 @@ func TestCSRF_BearerBypass(t *testing.T) {
 }
 
 func TestCSRF_RefererFallback(t *testing.T) {
-	h := withCSRF(t, CSRFConfig{AllowedOrigins: []string{"https://app.qeetid.com"}})
+	h := withCSRF(t, CSRFConfig{AllowedOrigins: []string{"https://id.qeet.in"}})
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "tok"})
 	req.Header.Set(csrfHeaderName, "tok")
@@ -139,7 +139,7 @@ func TestCSRF_NormaliseOriginsTrimsSlashAndCases(t *testing.T) {
 		"*",
 		"",
 	})
-	wantKeys := []string{"https://app.qeetid.com", "https://web.qeetid.com"}
+	wantKeys := []string{"https://id.qeet.in", "https://web.qeetid.com"}
 	for _, k := range wantKeys {
 		if _, ok := got[k]; !ok {
 			t.Errorf("expected key %q in normalised set, got %v", k, got)
