@@ -250,6 +250,7 @@ delivery is wired (log-only fallback when unconfigured).
 ## Documentation
 
 - **Implementation status** — [Feature status](#feature-status)
+- **Example apps** — [frontend/examples/](./frontend/examples/) — runnable integrations; start with the [Next.js app](./frontend/examples/nextjs-app)
 - **Backend module guide** — [backend/README.md](./backend/README.md)
 - **Architecture & conventions** — [backend/ARCHITECTURE.md](./backend/ARCHITECTURE.md)
 - **Deploy & operations** — [deploy/RUNBOOK.md](./deploy/RUNBOOK.md)
