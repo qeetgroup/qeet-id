@@ -30,6 +30,8 @@ import (
 	"github.com/qeetgroup/qeet-id/internal/platform/tokens"
 	"github.com/qeetgroup/qeet-id/internal/policy"
 	"github.com/qeetgroup/qeet-id/internal/rbac"
+	"github.com/qeetgroup/qeet-id/internal/rebac"
+	"github.com/qeetgroup/qeet-id/internal/scim"
 	"github.com/qeetgroup/qeet-id/internal/social"
 	"github.com/qeetgroup/qeet-id/internal/tenant"
 	"github.com/qeetgroup/qeet-id/internal/user"
@@ -194,6 +196,53 @@ func main() {
 	must(err, "create example spa oidc client")
 	fmt.Printf("  • oidc client  %-14q %s (public, PKCE — no secret)\n", "Example SPA", "qci_example_spa")
 
+	// ---- Demo enterprise / authz config (so the differentiator screens aren't empty) ----
+	// ReBAC tuples for Access → Relationships. Group membership is modelled as
+	// tuples too, so a userset resolves recursively: alice (∈ engineering) can
+	// VIEW product-roadmap because engineering#member is a viewer; bob (∉ engineering)
+	// cannot. Great for the explainable-authz "Access Tester" demo.
+	rebacSvc := rebac.NewService(pool)
+	demoTuples := []struct{ object, relation, subject string }{
+		{"group:engineering", "member", "user:" + owner.ID.String()},
+		{"group:engineering", "member", "user:" + users["alice@acme.test"].ID.String()},
+		{"group:engineering", "member", "user:" + users["carol@acme.test"].ID.String()},
+		{"document:product-roadmap", "owner", "user:" + owner.ID.String()},
+		{"document:product-roadmap", "viewer", "group:engineering#member"},
+		{"project:atlas", "editor", "user:" + users["alice@acme.test"].ID.String()},
+		{"project:atlas", "viewer", "user:" + users["bob@acme.test"].ID.String()},
+	}
+	for _, t := range demoTuples {
+		if _, e := rebacSvc.Write(ctx, acme.ID, t.object, t.relation, t.subject); e != nil {
+			must(e, "rebac tuple "+t.object)
+		}
+	}
+	fmt.Printf("  • rebac tuples  %d on Acme (Access → Relationships)\n", len(demoTuples))
+
+	// A SCIM provisioning token so Auth → Connections → SCIM shows a configured directory.
+	scimSvc := scim.NewService(pool, userRepo)
+	var scimToken string
+	inTx("scim token", func(tx pgx.Tx) error {
+		t, e := scimSvc.Rotate(ctx, tx, acme.ID)
+		scimToken = t
+		return e
+	})
+	fmt.Printf("  • scim token    %s\n", scimToken)
+
+	// A draft SAML connection so the "no SSO tax" SAML screens are populated. Read-only
+	// in an offline demo — don't click "Test Connection" without a real IdP.
+	_, err = pool.Exec(ctx, `
+		INSERT INTO tenant.saml_connections
+			(tenant_id, name, idp_entity_id, idp_sso_url, idp_certificate, email_attribute, name_attribute, status)
+		SELECT $1, 'Acme Okta (demo)', 'https://acme.okta.com/exkdemo', 'https://acme.okta.com/app/demo/sso/saml',
+			'-----BEGIN CERTIFICATE-----' || chr(10) || 'MIIDdemoPlaceholderNotARealCertForDisplayOnly' || chr(10) || '-----END CERTIFICATE-----',
+			'email', 'displayName', 'draft'
+		WHERE NOT EXISTS (
+			SELECT 1 FROM tenant.saml_connections WHERE tenant_id = $1 AND name = 'Acme Okta (demo)'
+		)
+	`, acme.ID)
+	must(err, "create demo saml connection")
+	fmt.Println("  • saml conn     \"Acme Okta (demo)\" (draft) on Acme")
+
 	// ---- Webhooks ----
 	inTx("webhook 1", func(tx pgx.Tx) error {
 		_, e := webhookSvc.Create(ctx, tx, webhook.CreateInput{TenantID: acme.ID, URL: "https://hooks.acme.test/qeet", Events: []string{"user.created", "auth.login_succeeded"}})
@@ -249,7 +298,7 @@ func main() {
 	must(rbacSvc.AssignRole(ctx, erin.ID, globex.ID, gMember.ID, &owner.ID, actor), "assign globex member")
 
 	// ---- A little login activity (sessions + login audit -> sessions page + analytics) ----
-	for _, email := range []string{"owner@acme.test", "alice@acme.test", "bob@acme.test"} {
+	for _, email := range []string{"owner@acme.test", "alice@acme.test", "bob@acme.test", "carol@acme.test", "dave@acme.test"} {
 		for i := 0; i < 2; i++ {
 			_, err := authSvc.Login(ctx, auth.LoginInput{Email: email, Password: seedPassword, IP: "203.0.113.10", UserAgent: "SeedScript/1.0"})
 			must(err, "login "+email)
