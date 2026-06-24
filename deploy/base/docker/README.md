@@ -1,54 +1,42 @@
 # Docker Build
 
-The image definitions live **here** (`deploy/base/docker/`), but the **build
+The image definition lives **here** (`deploy/base/docker/`), but the **build
 context must be the repository root** — the build needs the whole Go module and
-`platform/database/migrations/`, which live at the root. So you always build from
-the root with `-f deploy/base/docker/Dockerfile`.
+the migration SQL files embedded at compile time (`platform/database/migrations/`).
 
 | File | Image | Purpose |
 |---|---|---|
-| `Dockerfile` | `ghcr.io/qeetgroup/qeet-id` | Distroless API server |
-| `Dockerfile.migrate` | `ghcr.io/qeetgroup/qeet-id-migrate` | One-shot migration runner |
+| `Dockerfile` | `ghcr.io/qeetgroup/qeet-id` | Distroless API server (migrations embedded) |
 | `../../../.dockerignore` | — | At the repo root (Docker reads it only from the context root) |
 
-## Build images locally
+## Build image locally
 
 ```bash
 # API server (context = repo root)
-docker build -f deploy/base/docker/Dockerfile -t qeet-id:dev .
+docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
 
-# Migration runner
-docker build -f deploy/base/docker/Dockerfile.migrate -t qeet-id-migrate:dev .
-```
-
-Or use the helper script:
-
-```bash
-./deploy/base/docker/build.sh dev        # builds both images tagged :dev
-./deploy/base/docker/build.sh v1.2.3     # builds both images tagged :v1.2.3
+# Or use the helper script
+./deploy/base/docker/build.sh dev        # tagged :dev
+./deploy/base/docker/build.sh v1.2.3     # tagged :v1.2.3
 ```
 
 ## Image architecture
 
-**API image (`Dockerfile`):**
-- Stage 1: `golang:1.25-alpine` — compiles the binary with `-ldflags` stamping (version, commit, date)
+**`Dockerfile`:**
+- Stage 1: `golang:1.25-alpine` — compiles the binary with `-ldflags` stamping (version, commit, date); migration SQL files are embedded via `//go:embed`
 - Stage 2: `gcr.io/distroless/static` — minimal runtime; no shell, no package manager
-- Runs as non-root user
+- Runs as non-root user (65532)
 - Exposes port 4001
-
-**Migration image (`Dockerfile.migrate`):**
-- Based on `migrate/migrate` official image
-- Copies only `platform/database/migrations/`
-- Entrypoint: `migrate -source file:///migrations -database $DB_URL`
+- Migrations run automatically at startup — no separate migration image or step
 
 ## CI/CD
 
 Images are built and pushed by `.github/workflows/release.yml`:
 1. Triggered by a `vX.Y.Z` tag (created by release-please)
-2. Builds both images
+2. Builds the app image
 3. Signs with `cosign` keyless signing (Sigstore)
 4. Attaches SBOM + provenance attestations
-5. Pushes to `ghcr.io/qeetgroup/qeet-id` and `ghcr.io/qeetgroup/qeet-id-migrate`
+5. Pushes to `ghcr.io/qeetgroup/qeet-id`
 
 ## Verify a signed image before promoting
 

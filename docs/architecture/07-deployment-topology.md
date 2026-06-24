@@ -26,32 +26,33 @@ Config: [`deploy/environments/prod/docker-compose.yml`](../../deploy/environment
 
 | Service | Image | Purpose |
 |:--------|:------|:--------|
-| `migrate` | `ghcr.io/qeetgroup/qeet-id-migrate` | One-shot: runs `golang-migrate up` then exits |
-| `app` | `ghcr.io/qeetgroup/qeet-id` | Go API server |
+| `app` | `qeet-id:latest` | Go API server — runs migrations on startup then serves |
 | `redis` | `redis:7-alpine` | Rate limiting (ephemeral — no backup needed) |
 | `caddy` | `caddy:2-alpine` | TLS termination + reverse proxy |
 
-Startup order: `migrate` completes successfully → `redis` healthy → `app` starts → `caddy` begins routing.
+Startup order: `redis` healthy → `app` starts (runs `migrate up` then listens) → `caddy` begins routing.
+
+Migrations run automatically inside the app binary at startup using the embedded SQL files (`//go:embed *.sql` in `platform/database/migrations/runner.go`). They are a no-op when already up-to-date.
 
 ### Deploy / upgrade
 
 ```bash
-cd deploy/environments/prod
+cd /opt/qeet-id-src
+git pull
+docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
 
-# First deploy
-docker compose up -d
-
-# Rolling update (new image tag)
-nano .env                          # update APP_IMAGE + MIGRATE_IMAGE to new tag
-docker compose pull migrate app
-docker compose up migrate          # run migrations first
-docker compose up -d --no-deps app # restart app with new image
+cd /opt/qeet-id
+docker compose up -d --no-deps app   # migrations run automatically on restart
 ```
 
 ### Rollback
 
 ```bash
-nano .env                          # revert APP_IMAGE to previous tag
+cd /opt/qeet-id-src
+git checkout vX.Y.Z
+docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
+
+cd /opt/qeet-id
 docker compose up -d --no-deps app
 ```
 
@@ -61,21 +62,17 @@ docker compose up -d --no-deps app
 
 ## Images
 
-The Docker build context is the **repo root** (single Go module + `platform/database/migrations`):
+One image. The Docker build context is the **repo root**:
 
 ```bash
-docker build -f deploy/base/docker/Dockerfile          -t qeet-id:<tag> .
-docker build -f deploy/base/docker/Dockerfile.migrate  -t qeet-id-migrate:<tag> .
+docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
 ```
 
 | Image | Base | Notes |
 |:------|:-----|:------|
-| `qeet-id` | `gcr.io/distroless/static-debian12:nonroot` | No shell, nonroot user (65532), readonly FS |
-| `qeet-id-migrate` | `migrate/migrate` | Copies only `platform/database/migrations/` |
+| `qeet-id` | `gcr.io/distroless/static-debian12:nonroot` | No shell, nonroot user (65532), readonly FS; migrations embedded |
 
 Build metadata (version, commit SHA, Go version) is stamped via `-ldflags` into `platform/observability/buildinfo`.
-
-CI/release publishes cosign-signed images with SBOM + provenance: `ghcr.io/qeetgroup/qeet-id` and `ghcr.io/qeetgroup/qeet-id-migrate`.
 
 ---
 

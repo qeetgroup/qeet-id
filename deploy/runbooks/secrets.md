@@ -54,9 +54,8 @@ shred -u jwt-signing.pem saml-idp.key
 After updating secrets, verify the new deploy passes the production safety gate:
 
 ```bash
-kubectl -n qeet-id logs job/qeet-id-migrate  # check migration succeeded
-kubectl -n qeet-id rollout status deploy/qeet-id  # check new pods came up
-curl https://api.id.qeet.in/healthz | jq .version  # confirm new version
+docker compose logs app --tail=30   # migrations + startup — look for "migrations up to date"
+curl https://id.qeet.in/healthz | jq .version  # confirm new version
 ```
 
 If the API crashes immediately, it's almost always a `config.Validate()` failure. Check:

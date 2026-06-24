@@ -241,7 +241,7 @@ EC2 instance  ←  Caddy (TLS)  ←  qeet-id app  ←  AWS RDS (Postgres 16)
 | [deploy/runbooks/deploy.md](./deploy/runbooks/deploy.md) | Step-by-step first-deploy guide (start here) |
 | [deploy/runbooks/secrets.md](./deploy/runbooks/secrets.md) | Secret generation commands |
 
-Release images are cosign-signed with SBOM + provenance: `ghcr.io/qeetgroup/qeet-id` and `ghcr.io/qeetgroup/qeet-id-migrate`.
+Release image is cosign-signed with SBOM + provenance: `ghcr.io/qeetgroup/qeet-id`. Migrations run automatically on startup — no separate image needed.
 
 > Kubernetes (Helm), Terraform, and multi-env staging configs are available in git history and tracked in [ROADMAP.md](./ROADMAP.md) for when you're ready to scale.
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Build both qeet-id Docker images. The build context is the repo ROOT (the Go
-# module + platform/database/migrations are needed at build time); the
-# Dockerfiles live under deploy/base/docker/.
+# Build the qeet-id Docker image. The build context is the repo ROOT (the Go
+# module + embedded migrations live there); the Dockerfile lives under deploy/base/docker/.
 # Usage: ./deploy/base/docker/build.sh <tag>
 # Example: ./deploy/base/docker/build.sh dev
 #          ./deploy/base/docker/build.sh v1.2.3
@@ -22,13 +21,6 @@ docker build \
   --build-arg DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   "${REPO_ROOT}"
 
-echo "Building qeet-id-migrate:${TAG} from ${REPO_ROOT}"
-docker build \
-  --file "${DOCKERDIR}/Dockerfile.migrate" \
-  --tag "ghcr.io/qeetgroup/qeet-id-migrate:${TAG}" \
-  "${REPO_ROOT}"
-
 echo ""
 echo "Built:"
 echo "  ghcr.io/qeetgroup/qeet-id:${TAG}"
-echo "  ghcr.io/qeetgroup/qeet-id-migrate:${TAG}"

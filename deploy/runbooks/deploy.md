@@ -2,6 +2,8 @@
 
 Simple production deployment: one EC2 instance running Docker Compose, with AWS RDS for PostgreSQL. No Kubernetes, no Terraform — just Docker and a `.env` file.
 
+Database migrations run automatically on app startup (no separate step).
+
 ---
 
 ## Architecture
@@ -29,9 +31,8 @@ AWS RDS (PostgreSQL 16)           ← only accessible from EC2 SG
 5. **VPC**: same VPC as your EC2 · **Public access: No**
 6. Note the **endpoint hostname** (e.g. `your-db.xxxx.us-east-1.rds.amazonaws.com`)
 
-After creation, connect and run:
+After creation, verify connectivity from your EC2:
 ```sql
--- verify connectivity from your EC2 (after security group step below)
 psql "postgres://qeetid:PASSWORD@your-db.xxxx.rds.amazonaws.com:5432/qeet_id?sslmode=require" -c "SELECT version();"
 ```
 
@@ -113,14 +114,12 @@ scp -i your-key.pem deploy/environments/prod/{docker-compose.yml,Caddyfile,.env.
 
 # Create .env from the example
 cp .env.example .env
-nano .env   # fill in DB_URL, all secret values, image tags
+nano .env   # fill in DB_URL and all secret values
 ```
 
 Key values to set in `.env`:
 
 ```bash
-APP_IMAGE=ghcr.io/qeetgroup/qeet-id:X.Y.Z       # latest release tag
-MIGRATE_IMAGE=ghcr.io/qeetgroup/qeet-id-migrate:X.Y.Z
 DB_URL=postgres://qeetid:PASSWORD@your-db.rds.amazonaws.com:5432/qeet_id?sslmode=require
 JWT_SECRET=<generated>
 JWT_SIGNING_KEY=<generated PEM, single line with \n>
@@ -132,49 +131,47 @@ SAML_IDP_CERT=<generated PEM>
 
 ---
 
-## Step 7 — First Deploy
+## Step 7 — Build and Deploy
+
+Build the image directly on EC2 (no registry needed):
 
 ```bash
+# On EC2 — clone the repo
+git clone https://github.com/qeetgroup/qeet-id.git /opt/qeet-id-src
+cd /opt/qeet-id-src
+
+# Build the image
+docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
+
+# Start the stack (migrations run automatically on first boot)
 cd /opt/qeet-id
-
-# Authenticate with GitHub Container Registry
-echo $GITHUB_PAT | docker login ghcr.io -u <YOUR-GITHUB-USERNAME> --password-stdin
-
-# Pull images
-docker compose pull
-
-# Start (migrate runs first, then app)
 docker compose up -d
 
-# Watch migration logs — must complete successfully before app starts
-docker compose logs -f migrate
+# Watch startup logs — migrations will print "migrations up to date" then server starts
+docker compose logs -f app
 
 # Verify the API is up
 curl https://id.qeet.in/healthz        # → {"status":"ok"}
 curl https://id.qeet.in/readyz         # → {"status":"ok","db":"ok","redis":"ok"}
 ```
 
-If `migrate` fails: check `DB_URL` is correct and the RDS security group allows port 5432 from your EC2.
-
-If `app` fails to start: `docker compose logs app` — look for `config:` validation errors (missing secrets).
+If `app` fails to start: `docker compose logs app` — look for `migrations failed` (check `DB_URL`) or config validation errors (missing secrets).
 
 ---
 
 ## Updating (rolling deploy)
 
 ```bash
+cd /opt/qeet-id-src
+
+# Pull latest code
+git pull
+
+# Rebuild image
+docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
+
+# Restart app (migrations run automatically on startup)
 cd /opt/qeet-id
-
-# 1. Update image tags in .env
-nano .env   # set APP_IMAGE and MIGRATE_IMAGE to new tag X.Y.Z+1
-
-# 2. Pull new images
-docker compose pull migrate app
-
-# 3. Run migrations first (one-shot, exits when done)
-docker compose up migrate
-
-# 4. Restart app with new image (zero interruption for most changes)
 docker compose up -d --no-deps app
 ```
 
@@ -183,18 +180,22 @@ docker compose up -d --no-deps app
 ## Rollback
 
 ```bash
+cd /opt/qeet-id-src
+
+# Check out the previous release tag
+git checkout vX.Y.Z
+
+# Rebuild
+docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
+
+# Restart app
 cd /opt/qeet-id
-
-# Change image tags back to the previous version in .env
-nano .env   # set APP_IMAGE + MIGRATE_IMAGE back to X.Y.Z
-
-# Restart app only (do NOT re-run migrate backward — use roll-forward instead)
 docker compose up -d --no-deps app
 
 docker compose logs -f app   # confirm it starts cleanly
 ```
 
-> ⚠️ Never roll back a migration with `down` in production. If a migration has a bug, write a new migration to fix it forward.
+> ⚠️ Never roll back a migration in production. If a migration has a bug, write a new migration to fix it forward.
 
 ---
 
@@ -211,8 +212,7 @@ docker compose logs -f caddy
 # Restart a single service
 docker compose restart app
 
-# Open a shell in the app container (distroless — no shell available)
-# Connect to RDS directly instead:
+# Connect to RDS directly (no shell in distroless container)
 docker run --rm -it --network qeet-id-prod_internal postgres:16-alpine \
   psql "$DB_URL"
 

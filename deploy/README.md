@@ -5,15 +5,14 @@ Deployment artifacts for Qeet ID. Current target: **EC2 + Docker Compose + AWS R
 ```
 deploy/
 ├── base/
-│   └── docker/              Dockerfile (app) + Dockerfile.migrate + build.sh
+│   └── docker/              Dockerfile (app) + build.sh
 ├── environments/
 │   ├── dev/                 Local dev — Postgres-only Compose (used by `make db-up`)
 │   └── prod/
-│       └── compose/         Production stack (app + migrate + redis + caddy)
-│           ├── docker-compose.yml
-│           ├── .env.example
-│           ├── Caddyfile
-│           └── setup.sh     One-shot EC2 bootstrap script
+│       ├── docker-compose.yml   Production stack (app + redis + caddy)
+│       ├── .env.example
+│       ├── Caddyfile
+│       └── setup.sh             One-shot EC2 bootstrap script
 └── runbooks/
     ├── deploy.md            Step-by-step first-deploy guide (start here)
     └── secrets.md           Secret generation commands
@@ -27,30 +26,32 @@ bash deploy/environments/prod/setup.sh
 
 # 2. Copy compose files to EC2 and fill in .env
 cp deploy/environments/prod/.env.example .env
-# edit .env — set DB_URL (RDS), image tags, all secrets
+# edit .env — set DB_URL (RDS) and all secrets
 
-# 3. Deploy
+# 3. Build the image (on EC2)
+docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
+
+# 4. Deploy (migrations run automatically on startup)
 docker compose -f deploy/environments/prod/docker-compose.yml up -d
 
-# 4. Verify
+# 5. Verify
 curl https://id.qeet.in/healthz
 ```
 
 Full step-by-step walkthrough (RDS setup, security groups, secrets generation): **[runbooks/deploy.md](runbooks/deploy.md)**
 
-## Build images
+## Build image
 
-The build context must be the **repo root** (Go module + migrations live there):
+The build context must be the **repo root** (Go module + embedded migrations live there):
 
 ```bash
-docker build -f deploy/base/docker/Dockerfile         -t qeet-id:dev .
-docker build -f deploy/base/docker/Dockerfile.migrate -t qeet-id-migrate:dev .
+docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
 
 # Or use the helper script
 ./deploy/base/docker/build.sh dev
 ```
 
-CI/release publishes cosign-signed images: `ghcr.io/qeetgroup/qeet-id` and `ghcr.io/qeetgroup/qeet-id-migrate`.
+CI/release publishes a cosign-signed image: `ghcr.io/qeetgroup/qeet-id`.
 
 ## Upgrade path
 

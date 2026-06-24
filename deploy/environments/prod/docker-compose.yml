@@ -2,29 +2,21 @@ name: qeet-id-prod
 
 # Simple AWS deployment: EC2 + Docker Compose + AWS RDS (external Postgres).
 # Postgres is NOT a service here — DB_URL points to your RDS instance.
+# Migrations run automatically on app startup (no separate migrate service).
 #
 # Start:   docker compose --env-file .env up -d
 # Logs:    docker compose logs -f app
-# Update:  edit APP_IMAGE/MIGRATE_IMAGE in .env → docker compose up -d app migrate
+# Update:  docker compose pull app && docker compose up -d app
 # Stop:    docker compose down
 
 services:
 
-  # ── 1. Migrate (runs first, exits when done) ──────────────────────────────
-  migrate:
-    image: ${MIGRATE_IMAGE:-ghcr.io/qeetgroup/qeet-id-migrate:latest}
-    env_file: .env
-    networks: [internal]
-    restart: "no"
-
-  # ── 2. App ────────────────────────────────────────────────────────────────
+  # ── App (runs migrations on startup, then serves) ─────────────────────────
   app:
-    image: ${APP_IMAGE:-ghcr.io/qeetgroup/qeet-id:latest}
+    image: qeet-id:latest
     env_file: .env
     networks: [internal, edge]
     depends_on:
-      migrate:
-        condition: service_completed_successfully
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -33,13 +25,12 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
-  # ── 3. Redis (rate limiting — ephemeral, no backup needed) ────────────────
+  # ── Redis (rate limiting — ephemeral, no backup needed) ────────────────────
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--save", ""]   # disable RDB snapshots
-    volumes: [redisdata:/data]
     networks: [internal]
     restart: unless-stopped
     healthcheck:
@@ -48,7 +39,7 @@ services:
       timeout: 3s
       retries: 3
 
-  # ── 4. Caddy (TLS termination — auto Let's Encrypt) ───────────────────────
+  # ── Caddy (TLS termination — auto Let's Encrypt) ───────────────────────────
   caddy:
     image: caddy:2-alpine
     ports:
@@ -63,10 +54,9 @@ services:
     restart: unless-stopped
 
 volumes:
-  redisdata:
   caddydata:
   caddyconfig:
 
 networks:
-  internal:   # app ↔ redis ↔ migrate (never exposed)
+  internal:   # app ↔ redis (never exposed)
   edge:       # caddy ↔ app  (public-facing)
