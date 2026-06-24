@@ -1,11 +1,7 @@
-# Local dev: Postgres only. App tiers run on the host (make dev).
-# Credentials come from ./.env (gitignored); see .env.example.
-#
-# Project name encodes the environment (qeet-id-dev) so containers/network/volume
-# all carry the `qeet-id-dev_` prefix. The prod-shaped stack uses qeet-id-prod
-# (see deploy/environments/prod/docker-compose.yml) with the same
-# `pgdata` key, so dev and prod never share a volume.
 name: qeet-id-dev
+
+# Local dev: Postgres only. The app runs on the host via `make dev`.
+# Start: make db-up   Stop: make db-down
 
 services:
   postgres:
@@ -20,11 +16,10 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      # $$VAR so the container shell expands it, not compose.
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -p $${PGPORT}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
-  pgdata:   # -> qeet-id-dev_pgdata (project name + key); never collides with prod
+  pgdata:

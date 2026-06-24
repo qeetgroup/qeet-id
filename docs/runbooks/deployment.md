@@ -1,8 +1,8 @@
 # Deployment Runbook
 
-Full step-by-step deployment guide: **[deploy/runbooks/deploy.md](../../deploy/runbooks/deploy.md)**
+Full step-by-step deployment guide: **[deploy/prod/deploy.md](../../deploy/prod/deploy.md)**
 
-This file is a quick-reference summary; the authoritative guide with RDS setup, security group config, and first-deploy walkthrough is in `deploy/runbooks/deploy.md`.
+This file is a quick-reference summary; the authoritative guide with RDS setup, security group config, and first-deploy walkthrough is in `deploy/prod/deploy.md`.
 
 ---
 
@@ -15,14 +15,14 @@ Migrations run automatically on startup — no separate step needed.
 ```bash
 # Deploy / upgrade (on EC2)
 cd /opt/qeet-id-src && git pull
-docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
+docker build -f Dockerfile -t qeet-id:latest .
 
 cd /opt/qeet-id
 docker compose up -d --no-deps app   # migrations run automatically
 
 # Verify
-curl https://id.qeet.in/healthz     # → {"status":"ok"}
-curl https://id.qeet.in/readyz      # → {"status":"ok","db":"ok","redis":"ok"}
+curl https://api.id.qeet.in/healthz     # → {"status":"ok"}
+curl https://api.id.qeet.in/readyz      # → {"status":"ok","db":"ok","redis":"ok"}
 ```
 
 ---
@@ -32,7 +32,7 @@ curl https://id.qeet.in/readyz      # → {"status":"ok","db":"ok","redis":"ok"}
 ```bash
 cd /opt/qeet-id-src
 git checkout vX.Y.Z
-docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
+docker build -f Dockerfile -t qeet-id:latest .
 
 cd /opt/qeet-id
 docker compose up -d --no-deps app
@@ -43,8 +43,8 @@ docker compose logs -f app           # confirm clean startup
 
 ## Post-deployment checks
 
-1. `curl https://id.qeet.in/healthz` returns `200 OK`
-2. `curl https://id.qeet.in/readyz` returns `200 OK` (confirms DB + Redis)
+1. `curl https://api.id.qeet.in/healthz` returns `200 OK`
+2. `curl https://api.id.qeet.in/readyz` returns `200 OK` (confirms DB + Redis)
 3. `docker compose logs app --tail=20` — no `ERROR` lines at startup
 4. Login flow works end-to-end (use a test account)
 5. Check `GET /metrics` is reachable from your monitoring agent

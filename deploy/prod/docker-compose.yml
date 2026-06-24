@@ -1,17 +1,16 @@
 name: qeet-id-prod
 
-# Simple AWS deployment: EC2 + Docker Compose + AWS RDS (external Postgres).
-# Postgres is NOT a service here — DB_URL points to your RDS instance.
-# Migrations run automatically on app startup (no separate migrate service).
+# Production: EC2 + Docker Compose + AWS RDS.
+# Postgres is NOT here — DB_URL points to RDS.
+# Migrations run automatically on app startup.
 #
-# Start:   docker compose --env-file .env up -d
+# Start:   docker compose up -d
 # Logs:    docker compose logs -f app
-# Update:  docker compose pull app && docker compose up -d app
+# Update:  docker build -t qeet-id:latest /path/to/repo && docker compose up -d app
 # Stop:    docker compose down
 
 services:
 
-  # ── App (runs migrations on startup, then serves) ─────────────────────────
   app:
     image: qeet-id:latest
     env_file: .env
@@ -27,10 +26,9 @@ services:
       retries: 3
       start_period: 15s
 
-  # ── Redis (rate limiting — ephemeral, no backup needed) ────────────────────
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--save", ""]   # disable RDB snapshots
+    command: ["redis-server", "--save", ""]
     networks: [internal]
     restart: unless-stopped
     healthcheck:
@@ -39,13 +37,12 @@ services:
       timeout: 3s
       retries: 3
 
-  # ── Caddy (TLS termination — auto Let's Encrypt) ───────────────────────────
   caddy:
     image: caddy:2-alpine
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp"   # HTTP/3
+      - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddydata:/data
@@ -58,5 +55,5 @@ volumes:
   caddyconfig:
 
 networks:
-  internal:   # app ↔ redis (never exposed)
-  edge:       # caddy ↔ app  (public-facing)
+  internal:
+  edge:

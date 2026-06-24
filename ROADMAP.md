@@ -12,7 +12,7 @@ backlog is distilled by the [`product-manager`](./.claude/agents/product-manager
 
 ## 🚢 Deployment (current → future)
 
-**Current:** EC2 + Docker Compose + AWS RDS — see [deploy/runbooks/deploy.md](./deploy/runbooks/deploy.md).
+**Current:** EC2 + Docker Compose + AWS RDS — see [deploy/prod/deploy.md](./deploy/prod/deploy.md).
 
 **Future (in git history, restore when ready):**
 - 🟡 **Kubernetes + Helm** — chart with Deployment/Service/Ingress/HPA/PDB + pre-upgrade migration Job + ExternalSecrets; per-env `values.yaml` for stage + prod

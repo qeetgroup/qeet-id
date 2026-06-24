@@ -234,12 +234,12 @@ EC2 instance  ←  Caddy (TLS)  ←  qeet-id app  ←  AWS RDS (Postgres 16)
 
 | File | Purpose |
 |:---|:---|
-| [deploy/environments/prod/docker-compose.yml](./deploy/environments/prod/docker-compose.yml) | Production stack (app + migrate + redis + caddy) |
-| [deploy/environments/prod/.env.example](./deploy/environments/prod/.env.example) | All required env vars with comments |
-| [deploy/environments/prod/Caddyfile](./deploy/environments/prod/Caddyfile) | TLS + reverse proxy config |
-| [deploy/environments/prod/setup.sh](./deploy/environments/prod/setup.sh) | One-shot EC2 bootstrap (Docker install) |
-| [deploy/runbooks/deploy.md](./deploy/runbooks/deploy.md) | Step-by-step first-deploy guide (start here) |
-| [deploy/runbooks/secrets.md](./deploy/runbooks/secrets.md) | Secret generation commands |
+| [deploy/prod/docker-compose.yml](./deploy/prod/docker-compose.yml) | Production stack (app + migrate + redis + caddy) |
+| [deploy/prod/.env.example](./deploy/prod/.env.example) | All required env vars with comments |
+| [deploy/prod/Caddyfile](./deploy/prod/Caddyfile) | TLS + reverse proxy config |
+| [deploy/prod/setup.sh](./deploy/prod/setup.sh) | One-shot EC2 bootstrap (Docker install) |
+| [deploy/prod/deploy.md](./deploy/prod/deploy.md) | Step-by-step first-deploy guide (start here) |
+| [deploy/prod/secrets.md](./deploy/prod/secrets.md) | Secret generation commands |
 
 Release image is cosign-signed with SBOM + provenance: `ghcr.io/qeetgroup/qeet-id`. Migrations run automatically on startup — no separate image needed.
 

@@ -22,7 +22,7 @@ AWS RDS (PostgreSQL 16)   ← accessible only from EC2 security group
 
 ## Docker Compose stack
 
-Config: [`deploy/environments/prod/docker-compose.yml`](../../deploy/environments/prod/docker-compose.yml)
+Config: [`deploy/prod/docker-compose.yml`](../../deploy/prod/docker-compose.yml)
 
 | Service | Image | Purpose |
 |:--------|:------|:--------|
@@ -39,7 +39,7 @@ Migrations run automatically inside the app binary at startup using the embedded
 ```bash
 cd /opt/qeet-id-src
 git pull
-docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
+docker build -f Dockerfile -t qeet-id:latest .
 
 cd /opt/qeet-id
 docker compose up -d --no-deps app   # migrations run automatically on restart
@@ -50,7 +50,7 @@ docker compose up -d --no-deps app   # migrations run automatically on restart
 ```bash
 cd /opt/qeet-id-src
 git checkout vX.Y.Z
-docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
+docker build -f Dockerfile -t qeet-id:latest .
 
 cd /opt/qeet-id
 docker compose up -d --no-deps app
@@ -65,7 +65,7 @@ docker compose up -d --no-deps app
 One image. The Docker build context is the **repo root**:
 
 ```bash
-docker build -f deploy/base/docker/Dockerfile -t qeet-id:latest .
+docker build -f Dockerfile -t qeet-id:latest .
 ```
 
 | Image | Base | Notes |
