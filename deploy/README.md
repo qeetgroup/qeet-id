@@ -1,76 +1,61 @@
 # deploy/
 
-Deployment artifacts, organized **by environment** on top of a shared,
-env-agnostic **base**. Promotion is consistent across `dev → test → stage → prod`:
-the base never changes between environments; only the per-environment config does.
+Deployment artifacts for Qeet ID. Current target: **EC2 + Docker Compose + AWS RDS**.
 
 ```
 deploy/
-├── base/                         shared, environment-agnostic
-│   ├── docker/                   Dockerfile (app) + Dockerfile.migrate + build.sh
-│   ├── helm/qeet-id/             Helm chart (templates + default values.yaml)
-│   ├── kubernetes/base/          kustomize base (Deployment/Service/Job/…)
-│   ├── terraform/                root module + modules/ (rds, ecr, kms, secrets)
-│   └── observability/            Prometheus, Grafana, OTel Collector
+├── base/
+│   └── docker/              Dockerfile (app) + Dockerfile.migrate + build.sh
 ├── environments/
-│   ├── dev/                      local dev — Postgres-only Compose (used by `make db-up`)
-│   ├── test/                     test DB Compose + notes (CI is the real test env)
-│   ├── stage/                    values.yaml · kubernetes/ overlay · terraform.tfvars
-│   └── prod/                     values.yaml · kubernetes/ overlay · terraform.tfvars · compose/ (single-host stack)
-└── runbooks/                     operations, secrets, scaling, disaster recovery
+│   ├── dev/                 Local dev — Postgres-only Compose (used by `make db-up`)
+│   └── prod/
+│       └── compose/         Production stack (app + migrate + redis + caddy)
+│           ├── docker-compose.yml
+│           ├── .env.example
+│           ├── Caddyfile
+│           └── setup.sh     One-shot EC2 bootstrap script
+└── runbooks/
+    ├── deploy.md            Step-by-step first-deploy guide (start here)
+    └── secrets.md           Secret generation commands
 ```
 
-## Why base + environments
-
-The Helm chart, Terraform modules, and Dockerfiles are **the same** for every
-environment — duplicating them per env is a maintenance trap. So they live once
-under `base/`, and each environment supplies only its **config** (Helm values,
-kustomize patches, tfvars, compose). This keeps environments provably consistent
-and the diff between stage and prod small and reviewable.
-
-## Build (images)
-
-The build **context is the repo root** (the Go module + `platform/database/migrations`
-are needed at build time); the Dockerfiles live under `base/docker/`.
+## Quick start
 
 ```bash
-./deploy/base/docker/build.sh dev        # builds app + migrate images
-# or directly:
-docker build -f deploy/base/docker/Dockerfile         -t qeet-id .
-docker build -f deploy/base/docker/Dockerfile.migrate -t qeet-id-migrate .
+# 1. Bootstrap a fresh EC2 instance
+bash deploy/environments/prod/setup.sh
+
+# 2. Copy compose files to EC2 and fill in .env
+cp deploy/environments/prod/.env.example .env
+# edit .env — set DB_URL (RDS), image tags, all secrets
+
+# 3. Deploy
+docker compose -f deploy/environments/prod/docker-compose.yml up -d
+
+# 4. Verify
+curl https://id.qeet.in/healthz
 ```
 
-CI/release publish cosign-signed images: `ghcr.io/qeetgroup/qeet-id` and `…/qeet-id-migrate`.
+Full step-by-step walkthrough (RDS setup, security groups, secrets generation): **[runbooks/deploy.md](runbooks/deploy.md)**
 
-## Run, by environment
+## Build images
+
+The build context must be the **repo root** (Go module + migrations live there):
 
 ```bash
-# dev — Postgres only; app tiers run on the host via `make dev`
-make db-up      # docker compose -f deploy/environments/dev/docker-compose.yml up -d
+docker build -f deploy/base/docker/Dockerfile         -t qeet-id:dev .
+docker build -f deploy/base/docker/Dockerfile.migrate -t qeet-id-migrate:dev .
 
-# test — persistent test DB on :5002 (CI is the authoritative test env)
-docker compose -f deploy/environments/test/docker-compose.yml up -d
-
-# stage / prod — Helm (chart in base/, values per env)
-helm upgrade --install qeet-id deploy/base/helm/qeet-id \
-  -f deploy/environments/stage/values.yaml -n qeet-id-staging
-helm upgrade --install qeet-id deploy/base/helm/qeet-id \
-  -f deploy/environments/prod/values.yaml  -n qeet-id
-
-# stage / prod — kustomize alternative (overlay references base/)
-kubectl apply -k deploy/environments/prod/kubernetes/
-
-# prod — single-host Compose stack (Caddy TLS + Postgres + Redis + migrate one-shot)
-docker compose -f deploy/environments/prod/compose/docker-compose.prod.yml up -d
-
-# AWS infra (per env)
-terraform -chdir=deploy/base/terraform apply \
-  -var-file=../../environments/prod/terraform.tfvars
+# Or use the helper script
+./deploy/base/docker/build.sh dev
 ```
 
-## More
+CI/release publishes cosign-signed images: `ghcr.io/qeetgroup/qeet-id` and `ghcr.io/qeetgroup/qeet-id-migrate`.
 
-- **Operations / rollback / DR / key rotation** → [runbooks/](runbooks/)
-- **Observability** (Prometheus scrape, alerts, Grafana, OTel) → [base/observability/](base/observability/)
-- **Boot gate**: the app refuses to start outside `SERVICE_ENV=dev` unless every
-  invariant in `config.Validate()` is satisfied — see [runbooks/secrets.md](runbooks/secrets.md).
+## Upgrade path
+
+When you're ready to scale beyond a single server:
+
+- **Kubernetes + Helm**: chart, base manifests, and per-env values are available in git history — restore them when needed.
+- **Terraform**: AWS infrastructure modules (RDS, ECR, KMS, Secrets Manager) also in git history.
+- Planned packaging is tracked in [ROADMAP.md](../ROADMAP.md).

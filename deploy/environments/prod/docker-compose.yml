@@ -1,0 +1,72 @@
+name: qeet-id-prod
+
+# Simple AWS deployment: EC2 + Docker Compose + AWS RDS (external Postgres).
+# Postgres is NOT a service here — DB_URL points to your RDS instance.
+#
+# Start:   docker compose --env-file .env up -d
+# Logs:    docker compose logs -f app
+# Update:  edit APP_IMAGE/MIGRATE_IMAGE in .env → docker compose up -d app migrate
+# Stop:    docker compose down
+
+services:
+
+  # ── 1. Migrate (runs first, exits when done) ──────────────────────────────
+  migrate:
+    image: ${MIGRATE_IMAGE:-ghcr.io/qeetgroup/qeet-id-migrate:latest}
+    env_file: .env
+    networks: [internal]
+    restart: "no"
+
+  # ── 2. App ────────────────────────────────────────────────────────────────
+  app:
+    image: ${APP_IMAGE:-ghcr.io/qeetgroup/qeet-id:latest}
+    env_file: .env
+    networks: [internal, edge]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4001/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── 3. Redis (rate limiting — ephemeral, no backup needed) ────────────────
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", ""]   # disable RDB snapshots
+    volumes: [redisdata:/data]
+    networks: [internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ── 4. Caddy (TLS termination — auto Let's Encrypt) ───────────────────────
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    networks: [edge]
+    restart: unless-stopped
+
+volumes:
+  redisdata:
+  caddydata:
+  caddyconfig:
+
+networks:
+  internal:   # app ↔ redis ↔ migrate (never exposed)
+  edge:       # caddy ↔ app  (public-facing)
