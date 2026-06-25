@@ -1,0 +1,43 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: |
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -o qeet-id-server ./cmd/server
+
+      - name: Deploy
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          HOST: ${{ secrets.EC2_HOST }}
+          USER: ${{ secrets.EC2_USER }}
+        run: |
+          echo "$SSH_KEY" > key.pem
+          chmod 400 key.pem
+
+          # Copy binary
+          scp -i key.pem -o StrictHostKeyChecking=no \
+            qeet-id-server $USER@$HOST:/home/ubuntu/qeet-id-server
+
+          # Swap and restart
+          ssh -i key.pem -o StrictHostKeyChecking=no $USER@$HOST << 'EOF'
+            sudo mv /home/ubuntu/qeet-id-server /opt/qeet-id/qeet-id-server
+            sudo chmod +x /opt/qeet-id/qeet-id-server
+            sudo systemctl restart qeet-id
+            sudo systemctl status qeet-id --no-pager
+          EOF
+
+          rm key.pem
