@@ -49,7 +49,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Copy compose files to host
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
@@ -59,7 +59,7 @@ jobs:
           strip_components: 1 # drop the leading deploy/ path
 
       - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         env:
           IMAGE: ${{ env.IMAGE_BASE }}:${{ github.sha }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
