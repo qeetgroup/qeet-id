@@ -33,7 +33,13 @@ import {
   WordReveal,
 } from "@/components/marketing/motion";
 
-const trustNames = ["Priya Anand", "Marcus Hale", "Sofía Reyes", "Dev Patel", "Jun Park"];
+const trustPeople = [
+  { name: "Priya Anand", photo: "/avatars/priya.jpg" },
+  { name: "Marcus Hale", photo: "/avatars/marcus.jpg" },
+  { name: "Sofía Reyes", photo: "/avatars/sofia.jpg" },
+  { name: "Dev Patel", photo: "/avatars/dev.jpg" },
+  { name: "Jun Park", photo: "/avatars/jun.jpg" },
+];
 
 function GoogleGlyph() {
   return (
@@ -336,10 +342,11 @@ export function Hero() {
 
             <StaggerItem className="flex items-center gap-3 pt-1">
               <div className="flex -space-x-2">
-                {trustNames.map((name) => (
+                {trustPeople.map((person) => (
                   <InitialsAvatar
-                    key={name}
-                    name={name}
+                    key={person.name}
+                    name={person.name}
+                    src={person.photo}
                     size="sm"
                     className="border-2 border-background"
                   />

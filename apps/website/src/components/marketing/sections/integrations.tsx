@@ -9,11 +9,12 @@ import {
   Microsoft,
   Okta,
   Onelogin,
+  PingIdentity,
   Workday,
   X,
 } from "@thesvg/react";
 import { IconOidcConnector, IconSamlConnector, IconScimSync, type QeetIconProps } from "@qeetrix/ui/brand";
-import { ArrowRightIcon, CloudIcon, LeafIcon, NetworkIcon, RefreshCwIcon, ShieldIcon } from "lucide-react";
+import { ArrowRightIcon, NetworkIcon } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 
 import { ButtonLink } from "../button-link";
@@ -50,8 +51,7 @@ const providers: Group[] = [
       { name: "Azure AD", icon: Microsoft },
       { name: "Auth0", icon: Auth0 },
       { name: "OneLogin", icon: Onelogin },
-      { name: "PingIdentity", icon: ShieldIcon },
-      { name: "JumpCloud", icon: CloudIcon },
+      { name: "PingIdentity", icon: PingIdentity },
       { name: "Generic SAML", icon: IconSamlConnector },
       { name: "Generic OIDC", icon: IconOidcConnector },
     ],
@@ -64,8 +64,6 @@ const providers: Group[] = [
       { name: "LDAP", icon: NetworkIcon },
       { name: "Active Directory", icon: Microsoft },
       { name: "Workday", icon: Workday },
-      { name: "BambooHR", icon: LeafIcon },
-      { name: "Rippling", icon: RefreshCwIcon },
       { name: "Google Workspace", icon: Google },
       { name: "Okta", icon: Okta },
     ],
