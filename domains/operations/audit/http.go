@@ -36,14 +36,18 @@ type Row struct {
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
-func (rd *Reader) List(ctx context.Context, tenantID uuid.UUID, limit int, cursor string) ([]Row, string, error) {
+// ListFilter narrows List's results. Every field is optional; zero-value
+// fields are not applied as filters.
+type ListFilter struct {
+	Action       string
+	ResourceType string
+	ActorUserID  uuid.UUID
+}
+
+func (rd *Reader) List(ctx context.Context, tenantID uuid.UUID, limit int, cursor string, filter ListFilter) ([]Row, string, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	var (
-		rows interface{ Scan(...any) error }
-		_    = rows
-	)
 	q := `
 		SELECT id, tenant_id, actor_user_id, actor_type, action, resource_type, resource_id,
 		       host(ip), user_agent, request_id, created_at
@@ -51,16 +55,28 @@ func (rd *Reader) List(ctx context.Context, tenantID uuid.UUID, limit int, curso
 		WHERE tenant_id = $1
 	`
 	args := []any{tenantID}
+	if filter.Action != "" {
+		args = append(args, filter.Action)
+		q += ` AND action = $` + strconv.Itoa(len(args))
+	}
+	if filter.ResourceType != "" {
+		args = append(args, filter.ResourceType)
+		q += ` AND resource_type = $` + strconv.Itoa(len(args))
+	}
+	if filter.ActorUserID != uuid.Nil {
+		args = append(args, filter.ActorUserID)
+		q += ` AND actor_user_id = $` + strconv.Itoa(len(args))
+	}
 	if cursor != "" {
 		cid, err := uuid.Parse(cursor)
 		if err != nil {
 			return nil, "", errs.ErrBadRequest.WithDetail("invalid cursor")
 		}
-		q += ` AND (created_at, id) < (SELECT created_at, id FROM audit.events WHERE id = $2)`
 		args = append(args, cid)
+		q += ` AND (created_at, id) < (SELECT created_at, id FROM audit.events WHERE id = $` + strconv.Itoa(len(args)) + `)`
 	}
-	q += ` ORDER BY created_at DESC, id DESC LIMIT $` + strconv.Itoa(len(args)+1)
 	args = append(args, limit+1)
+	q += ` ORDER BY created_at DESC, id DESC LIMIT $` + strconv.Itoa(len(args))
 
 	resRows, err := rd.pool.Query(ctx, q, args...)
 	if err != nil {
@@ -104,7 +120,18 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	out, next, err := h.Reader.List(r.Context(), tid, limit, r.URL.Query().Get("cursor"))
+	var filter ListFilter
+	filter.Action = r.URL.Query().Get("action")
+	filter.ResourceType = r.URL.Query().Get("resource_type")
+	if raw := r.URL.Query().Get("actor_user_id"); raw != "" {
+		actorID, err := uuid.Parse(raw)
+		if err != nil {
+			httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid actor_user_id"))
+			return
+		}
+		filter.ActorUserID = actorID
+	}
+	out, next, err := h.Reader.List(r.Context(), tid, limit, r.URL.Query().Get("cursor"), filter)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return

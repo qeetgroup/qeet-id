@@ -185,7 +185,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { title: "Webhooks", url: "/developer/webhooks", icon: <WebhookIcon /> },
       { title: "Auth Hooks", url: "/developer/auth-hooks", icon: <ZapIcon /> },
-      { title: "AI Agents", url: "/developer/agents", icon: <SparklesIcon /> },
+      { title: "Agent Governance", url: "/developer/agents", icon: <SparklesIcon /> },
       { title: "Verifiable Credentials", url: "/developer/credentials", icon: <BadgeCheckIcon /> },
       { title: "Bots & Automations", url: "/developer/bots", icon: <BotIcon /> },
       { title: "Infrastructure", url: "/developer/infrastructure", icon: <ServerCogIcon /> },

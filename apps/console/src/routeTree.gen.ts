@@ -59,6 +59,7 @@ import { Route as AppAccessRelationshipsRouteImport } from './routes/_app/access
 import { Route as AppAccessPoliciesRouteImport } from './routes/_app/access/policies'
 import { Route as AppAccessPermissionsRouteImport } from './routes/_app/access/permissions'
 import { Route as AppAccessCheckRouteImport } from './routes/_app/access/check'
+import { Route as AppAuthConnectionsIndexRouteImport } from './routes/_app/auth/connections/index'
 import { Route as AppSettingsWorkspaceGeneralRouteImport } from './routes/_app/settings/workspace/general'
 import { Route as AppSettingsWorkspaceEmailTemplatesRouteImport } from './routes/_app/settings/workspace/email-templates'
 import { Route as AppSettingsWorkspaceDomainsRouteImport } from './routes/_app/settings/workspace/domains'
@@ -343,6 +344,11 @@ const AppAccessCheckRoute = AppAccessCheckRouteImport.update({
   path: '/access/check',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAuthConnectionsIndexRoute = AppAuthConnectionsIndexRouteImport.update({
+  id: '/auth/connections/',
+  path: '/auth/connections/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsWorkspaceGeneralRoute =
   AppSettingsWorkspaceGeneralRouteImport.update({
     id: '/settings/workspace/general',
@@ -608,6 +614,7 @@ export interface FileRoutesByFullPath {
   '/settings/workspace/domains': typeof AppSettingsWorkspaceDomainsRoute
   '/settings/workspace/email-templates': typeof AppSettingsWorkspaceEmailTemplatesRoute
   '/settings/workspace/general': typeof AppSettingsWorkspaceGeneralRoute
+  '/auth/connections/': typeof AppAuthConnectionsIndexRoute
   '/auth/connections/oidc/$clientId': typeof AppAuthConnectionsOidcClientIdRoute
 }
 export interface FileRoutesByTo {
@@ -691,6 +698,7 @@ export interface FileRoutesByTo {
   '/settings/workspace/domains': typeof AppSettingsWorkspaceDomainsRoute
   '/settings/workspace/email-templates': typeof AppSettingsWorkspaceEmailTemplatesRoute
   '/settings/workspace/general': typeof AppSettingsWorkspaceGeneralRoute
+  '/auth/connections': typeof AppAuthConnectionsIndexRoute
   '/auth/connections/oidc/$clientId': typeof AppAuthConnectionsOidcClientIdRoute
 }
 export interface FileRoutesById {
@@ -777,6 +785,7 @@ export interface FileRoutesById {
   '/_app/settings/workspace/domains': typeof AppSettingsWorkspaceDomainsRoute
   '/_app/settings/workspace/email-templates': typeof AppSettingsWorkspaceEmailTemplatesRoute
   '/_app/settings/workspace/general': typeof AppSettingsWorkspaceGeneralRoute
+  '/_app/auth/connections/': typeof AppAuthConnectionsIndexRoute
   '/_app/auth/connections/oidc/$clientId': typeof AppAuthConnectionsOidcClientIdRoute
 }
 export interface FileRouteTypes {
@@ -862,6 +871,7 @@ export interface FileRouteTypes {
     | '/settings/workspace/domains'
     | '/settings/workspace/email-templates'
     | '/settings/workspace/general'
+    | '/auth/connections/'
     | '/auth/connections/oidc/$clientId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -945,6 +955,7 @@ export interface FileRouteTypes {
     | '/settings/workspace/domains'
     | '/settings/workspace/email-templates'
     | '/settings/workspace/general'
+    | '/auth/connections'
     | '/auth/connections/oidc/$clientId'
   id:
     | '__root__'
@@ -1030,6 +1041,7 @@ export interface FileRouteTypes {
     | '/_app/settings/workspace/domains'
     | '/_app/settings/workspace/email-templates'
     | '/_app/settings/workspace/general'
+    | '/_app/auth/connections/'
     | '/_app/auth/connections/oidc/$clientId'
   fileRoutesById: FileRoutesById
 }
@@ -1391,6 +1403,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessCheckRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/auth/connections/': {
+      id: '/_app/auth/connections/'
+      path: '/auth/connections'
+      fullPath: '/auth/connections/'
+      preLoaderRoute: typeof AppAuthConnectionsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/workspace/general': {
       id: '/_app/settings/workspace/general'
       path: '/settings/workspace/general'
@@ -1741,6 +1760,7 @@ interface AppRouteChildren {
   AppSettingsWorkspaceDomainsRoute: typeof AppSettingsWorkspaceDomainsRoute
   AppSettingsWorkspaceEmailTemplatesRoute: typeof AppSettingsWorkspaceEmailTemplatesRoute
   AppSettingsWorkspaceGeneralRoute: typeof AppSettingsWorkspaceGeneralRoute
+  AppAuthConnectionsIndexRoute: typeof AppAuthConnectionsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -1811,6 +1831,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsWorkspaceEmailTemplatesRoute:
     AppSettingsWorkspaceEmailTemplatesRoute,
   AppSettingsWorkspaceGeneralRoute: AppSettingsWorkspaceGeneralRoute,
+  AppAuthConnectionsIndexRoute: AppAuthConnectionsIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

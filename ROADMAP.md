@@ -34,8 +34,9 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 
 ### 🏢 Enterprise SSO & provisioning
 - ✅ OIDC / OAuth 2.0 provider — discovery, JWKS, Auth Code + PKCE, `/userinfo`, refresh, revoke, introspect, logout, signing-key rotation, RFC 9728 PRM + **RFC 8707 resource indicators bound into the token audience** across authorization_code, refresh_token (preserved across rotation, or switched via an explicit `resource`), and token-exchange · RFC 9207 `iss` on the authorize redirect (success and error) *(device grant doesn't collect a resource indicator yet)*
-- ✅ Device Authorization Grant (RFC 8628) · Token Exchange (RFC 8693 — downscope + `act` delegation)
+- ✅ Device Authorization Grant (RFC 8628) · Token Exchange (RFC 8693 — downscope + `act` delegation) · **CIBA** (poll mode — a client resolves the user via `login_hint`, no browser redirect; async consent via an in-app notification + `/oauth/bc-authorize/{pending,decision}`)
 - ✅ SAML 2.0 — **SP and IdP** modes · SCIM 2.0 (users + groups + PatchOp) · LDAP / Active Directory
+- ✅ **Self-serve Admin Portal** — a tenant admin generates a capability-scoped (`saml`/`scim`), time-limited link (`POST /tenants/{id}/admin-portal/links`) their *own* IT admin follows to configure the SAML connection and/or roll the SCIM token directly — no Qeet ID account, no console login. Possession of the link is the sole credential (hashed at rest, revocable, not single-use); the hosted page at `{LoginBaseURL}/admin-portal/{token}` renders on the tenant's brand. Closes the gap against WorkOS's Admin Portal, the category leader for this pattern
 - ✅ Social login (Google, GitHub, Microsoft, Apple, custom) · account linking · SSO test-connection
 
 ### 🛡️ Authorization
@@ -46,8 +47,10 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 ### 🤖 Developer & AI-agent platform
 - ✅ Scoped API keys (`qk_`, hashed, audited) · service accounts (`client_credentials` M2M)
 - ✅ Secrets vault (AES-256-GCM, scoped `vault:<name>`, **real AWS KMS provider** wired + tested) · **Token Vault** — per-tenant encrypted store for third-party OAuth tokens (any registered provider — Slack/GitHub/Google/custom), a standard authorization-code connect ceremony, and a `GetAccessToken` API that transparently refreshes and never exposes the raw refresh token to the caller — an agent holding an RFC 8693-delegated token reaches the delegating user's own connected account · HMAC-SHA256 webhooks (backoff retry + dead-letter give-up after `maxDeliveryAttempts`)
-- ✅ **AI-agent identity** — ephemeral scoped revocable tokens (`actor_type=agent`) + tenant-wide **kill-switch** (`/agents/kill-all`) + **lifecycle state machine** (`active`/`suspended`/`decommissioned`, `0065_agent_lifecycle`)
-- ✅ **MCP introspection** (`actor_type`/`agent_id`/`act` on `/oauth/introspect`) · token delegation (RFC 8693 `act`)
+- ✅ **AI-agent identity** — ephemeral scoped revocable tokens (`actor_type=agent`) + tenant-wide **kill-switch** (`/agents/kill-all`) + **lifecycle state machine** (`active`/`suspended`/`decommissioned`, `0065_agent_lifecycle`) + **sponsor model** (every agent requires a named human owner who's an actual tenant member; `TransferSponsor` reassigns everything an offboarding sponsor owned in one call)
+- ✅ **MCP introspection** (`actor_type`/`agent_id`/`act` on `/oauth/introspect`) · token delegation (RFC 8693 `act`) · **Agent-as-Principal** — first-class non-human principal self-described via `actor_type`+`agent_id` claims (not a `sub`-prefix convention, which would break RFC 8693 token exchange's subject-token UUID parsing), advertised via discovery's `actor_types_supported` · **Shadow-AI discovery** — flags OIDC clients that picked up a machine grant type (`client_credentials`/token-exchange) without going through the agents/service-accounts registry, ranked by live refresh-token count; `.../oidc/clients/{id}/review` acknowledges one
+- ✅ **AuthZEN PDP/PEP** — OpenID AuthZEN-standard `POST /tenants/{id}/access/v1/evaluation`, a spec-shaped facade routing to the existing RBAC/ReBAC engines (`resource.type="permission"` → RBAC; anything else → ReBAC using `"type:id"`/relation), with `context.explain` returning the same grant-path trace as each engine's own `?explain=true` — lets an external policy-enforcement point (e.g. an MCP tool-call gateway) speak one standard protocol instead of Qeet ID's bespoke `/check` shape
+- ✅ **Agent Governance** — everything above is packaged as one named console surface (`/developer/agents`, renamed from "AI Agents"), not scattered settings: agent create/suspend/kill-all, a sponsor-transfer tool (search-select the departing/new sponsor, previews the affected count before confirming), and a Shadow-AI review queue (acknowledge unmanaged machine-grant clients). Token Vault and CIBA are governed by the same primitives but remain API-only — no console UI (documented, not built) — since neither has an admin-facing workflow distinct from their API contract yet
 - ✅ **W3C Verifiable Credentials** (JWT-VC issue / verify / revoke) · analytics · SIEM streaming
 
 ### 👥 Identity & workspace
@@ -73,7 +76,6 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 ### Product roadmap
 | Feature | Priority | Notes |
 |---|---|---|
-| CIBA grant (Client-Initiated Backchannel Auth) | 🟠 | Push/email async consent for elevated tokens |
 | Auth-hook claims in the OIDC ID-token path | 🟢 | Custom claims already flow into direct API-token login (incl. MFA); threading them through the hosted-login cookie → OIDC authorize/ID-token pipeline is separate, larger work |
 | i18n — remaining coverage | 🟡 | 8 console catalogs (en+7) exist w/ partial namespaces; remaining screens + locale-aware emails + login app pending |
 | WCAG 2.2 AA — a11y gate + legacy screens | 🟡 | ⚠️ the a11y eslint globs point at renamed `qeetid-admin`/`qeetid-login` dirs (gate matches 0 files today); fix globs, then audit ~70 older screens |
@@ -85,10 +87,6 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 
 | Feature | Priority | What it adds |
 |---|---|---|
-| **Agent-as-Principal** | 🟡 | First-class non-human OIDC principal (`sub_type=agent`, separate `sub` namespace, discovery metadata) |
-| **Shadow-AI discovery** | 🟡 | Flag OAuth clients holding live grants but not registered as managed principals |
-| **Agent sponsor model** | 🟡 | Every agent tied to a named human owner; auto-transfer on offboarding (no orphaned agents) |
-| **AuthZEN PDP/PEP** | 🟡 | OpenID AuthZEN-standard `/evaluation` endpoint + COAZ MCP-tool profile over the existing authz engine |
 | **SSF / CAEP events** | 🟡 | Real-time `session-revoked` / `token-claims-change` signals pushed to downstream gateways |
 | **Device-bound agent credentials** | 🟢 | TPM/enclave-attested keys + RFC 8705 mTLS — non-exportable, non-replayable M2M creds |
 
@@ -140,7 +138,7 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 | Device Authorization Grant (RFC 8628) | ✅ | ✅ | ❌ | 🟡 | 🟡 | ✅ | ✅ | 🟡 | ✅ |
 | **Token Exchange (RFC 8693) + delegation** | ✅ | ✅ | ❌ | 🟡 | 🟡 | ✅ | ✅ | 🟡 | ✅ |
 | MCP AS metadata (RFC 9728 + 8707) | ✅⁴ | ⏳ | ❌ | 🟡 | ❌ | ❌ | ❌ | ❌ | 🟡 |
-| CIBA (backchannel) | ⏳ | ✅ | ❌ | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | 🟡 |
+| CIBA (backchannel) | ✅ | ✅ | ❌ | 🟡 | 🟡 | ✅ | 🟡 | 🟡 | 🟡 |
 
 <sub>⁴ RFC 9728 Protected Resource Metadata + RFC 8707 resource indicators are advertised, validated, and bound into the token audience across authorization_code/refresh_token/token-exchange; RFC 9207 `iss` ships on the authorize redirect. Device grant doesn't collect a resource indicator yet.</sub>
 
@@ -154,7 +152,7 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 | Domain verification / SSO-by-domain | ✅ | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | 🟡 | ❌ |
 | LDAP / AD federation | ✅ | ✅ | 🟡 | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 |
 | Multi-tenant / Organizations | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 |
-| Self-serve SSO/SCIM admin UI | ✅ | 🟡 | 🟡 | ✅ | ✅ | ❌ | 🟡 | 🟡 | ❌ |
+| Self-serve SSO/SCIM admin UI | ✅⁹ | 🟡 | 🟡 | ✅ | ✅ | ❌ | 🟡 | 🟡 | ❌ |
 
 ### Authorization
 | Capability | **Qeet ID** | Auth0/Okta | Clerk | WorkOS | Stytch | Keycloak | FusionAuth | Zitadel | Ory |
@@ -165,7 +163,7 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 | **Fine-grained / ReBAC (Zanzibar)** | ✅ | ✅ FGA | 🟡 | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ Keto |
 | **Explainable authz ("why?")** | ✅⁶ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟡 |
 
-<sub>⁵ Per-tenant IP allow/deny (CIDR) + password/login-method policy, not a general attribute-condition engine. ⁶ `?explain=true` returns a full grant-path trace on **both** RBAC and ReBAC `/check`.</sub>
+<sub>⁵ Per-tenant IP allow/deny (CIDR) + password/login-method policy, not a general attribute-condition engine. ⁶ `?explain=true` returns a full grant-path trace on **both** RBAC and ReBAC `/check`. ⁹ Both a logged-in tenant admin's own self-serve console screens *and* a WorkOS-style Admin Portal link an external IT admin can use with no Qeet ID account at all.</sub>
 
 ### Security & operations
 | Capability | **Qeet ID** | Auth0/Okta | Clerk | WorkOS | Stytch | Keycloak | FusionAuth | Zitadel | Ory |
@@ -211,7 +209,7 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 
 <sub>² Stripe + Razorpay checkout code complete & webhook-verified; go-live needs env keys.</sub>
 
-**Where Qeet ID wins:** both an OIDC **and** SAML IdP with SCIM Users+Groups (open-source, not paywalled); tamper-evident hash-chained audit with `/verify`; a full agentic-identity stack (AI-agent identities + RFC 8693 delegation + MCP introspection + token vaulting + W3C VCs); ReBAC **and** RBAC both explainable (`?explain=true` on both `/check` endpoints — no other researched platform, including OpenFGA/SpiceDB, ships ReBAC explainability at all); and security-on-by-default (theft detection, lockout, prod boot-gate, bot detection). **Closest peer:** Zitadel. **Remaining gaps vs. the field:** CIBA, richer adaptive-MFA signals, and KMS BYOK go-live (ops).
+**Where Qeet ID wins:** both an OIDC **and** SAML IdP with SCIM Users+Groups (open-source, not paywalled); tamper-evident hash-chained audit with `/verify`; a full agentic-identity stack (AI-agent identities + RFC 8693 delegation + MCP introspection + token vaulting + W3C VCs); ReBAC **and** RBAC both explainable (`?explain=true` on both `/check` endpoints — no other researched platform, including OpenFGA/SpiceDB, ships ReBAC explainability at all); and security-on-by-default (theft detection, lockout, prod boot-gate, bot detection). **Closest peer:** Zitadel. **Remaining gaps vs. the field:** richer adaptive-MFA signals and KMS BYOK go-live (ops).
 
 <details><summary>Competitive research sources (2025–2026)</summary>
 

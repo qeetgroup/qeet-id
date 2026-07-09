@@ -340,6 +340,7 @@ paths:
               type: object
               required:
                 - name
+                - sponsor_user_id
               properties:
                 name:
                   type: string
@@ -349,6 +350,10 @@ paths:
                     type: string
                 token_ttl_seconds:
                   type: integer
+                sponsor_user_id:
+                  type: string
+                  format: uuid
+                  description: The named human owner accountable for this agent. Must be a member of this tenant.
       responses:
         '201':
           description: Agent created (secret returned once)
@@ -574,6 +579,89 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /v1/tenants/{tenantID}/agents/sponsored-by/{userID}:
+    get:
+      operationId: get_v1_tenants_ByTenantID_agents_sponsored_by_ByUserID
+      summary: List agents sponsored by a user
+      description: What an admin needs to see before offboarding userID — every agent they're the accountable owner of.
+      tags:
+        - Agents
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userID
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/tenants/{tenantID}/agents/sponsored-by/{userID}/transfer:
+    post:
+      operationId: post_v1_tenants_ByTenantID_agents_sponsored_by_ByUserID_transfer
+      summary: Transfer sponsorship
+      description: Reassigns every agent userID sponsors to to_user_id in one call — the offboarding operation, so no agent is left with an owner who no longer has access.
+      tags:
+        - Agents
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userID
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - to_user_id
+              properties:
+                to_user_id:
+                  type: string
+                  format: uuid
+                  description: Must be a member of this tenant.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transferred:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
   /v1/tenants/{tenantID}/auth-hooks:
     get:
       operationId: get_v1_tenants_ByTenantID_auth_hooks

@@ -29,6 +29,8 @@ tags:
     description: Per-tenant password rules and allowed login methods.
   - name: Policy
     description: Per-tenant security policy.
+  - name: AuthZEN
+    description: OpenID AuthZEN core evaluation API — a spec-shaped facade over RBAC/ReBAC for external policy-enforcement points.
 paths:
   /v1/auth/forgot-password:
     post:
@@ -2175,6 +2177,72 @@ paths:
                           type: string
                         depth:
                           type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /v1/tenants/{tenantID}/access/v1/evaluation:
+    post:
+      operationId: post_v1_tenants_ByTenantID_access_v1_evaluation
+      summary: AuthZEN evaluation
+      description: OpenID AuthZEN core PDP evaluation request. Routes to RBAC when resource.type is "permission" (action.name is the permission key); otherwise routes to ReBAC (resource becomes "type:id", action.name becomes the relation).
+      tags:
+        - AuthZEN
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - subject
+                - action
+              properties:
+                subject:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    id:
+                      type: string
+                resource:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                    id:
+                      type: string
+                action:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                context:
+                  type: object
+                  description: 'Optional. { explain: true } includes the grant-path trace inline in the response context.'
+      responses:
+        '200':
+          description: '{ decision: bool, context?: object }'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision:
+                    type: boolean
+                  context:
+                    type: object
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

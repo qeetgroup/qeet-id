@@ -374,6 +374,7 @@ func (r *Repository) SeedBuiltins(ctx context.Context) error {
 		{"role.read", "Read roles and assignments"},
 		{"role.write", "Manage roles and assignments"},
 		{"audit.read", "Read audit events"},
+		{"audit.write", "Resolve audit anomalies and manage anomaly-detection settings"},
 		{"group.read", "Read groups and members"},
 		{"group.write", "Manage groups and members"},
 		{"connection.read", "Read SSO/identity connections (OIDC, SAML, SCIM, LDAP, social)"},

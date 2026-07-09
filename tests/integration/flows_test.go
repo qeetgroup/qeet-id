@@ -461,6 +461,147 @@ func TestOIDCRefreshTokenPreservesResourceBinding(t *testing.T) {
 	}
 }
 
+// End-to-end OpenID CIBA (poll mode): a client with login_hint starts a
+// backchannel request, the user sees and approves it via the pending/decision
+// endpoints, and the client's poll then succeeds — mirroring the device
+// grant's rotate/reuse-safety shape but resolved via login_hint up front
+// instead of a human-typed code.
+func TestCIBABackchannelFlow(t *testing.T) {
+	requireDB(t)
+	ctx := context.Background()
+	tenantID := createTenant(t, ctx, uniqueSlug("ciba"))
+	userEmail := uniqueSlug("ciba") + "@example.com"
+	var userID uuid.UUID
+	if err := testPool.QueryRow(ctx, `
+		INSERT INTO "user".users (tenant_id, email) VALUES ($1, $2) RETURNING id
+	`, tenantID, userEmail).Scan(&userID); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	issuer := mustIssuer()
+	svc := oidc.NewService(testPool, issuer)
+
+	tx, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	client, secret, err := svc.RegisterClient(ctx, tx, oidc.CreateClientInput{
+		TenantID: tenantID, Name: "CIBA Client", RedirectURIs: []string{"https://app.example/cb"},
+		GrantTypes: []string{"refresh_token", "urn:openid:params:grant-type:ciba"},
+	})
+	if err != nil {
+		t.Fatalf("register client: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	// Polling before any decision is authorization_pending.
+	authResp, err := svc.BackchannelAuthorize(ctx, client.ClientID, secret, userEmail, "", "Approve $50 payment")
+	if err != nil {
+		t.Fatalf("backchannel authorize: %v", err)
+	}
+	if authResp.AuthReqID == "" {
+		t.Fatal("missing auth_req_id")
+	}
+	// BackchannelToken's pending/denied/expired errors are oauthError, an
+	// unexported type (device.go) rendered as "<code>: <description>" by
+	// Error() — checked via the string, since it isn't accessible cross-package.
+	if _, err := svc.BackchannelToken(ctx, client.ClientID, authResp.AuthReqID); err == nil {
+		t.Fatal("token poll before decision should fail")
+	} else if !strings.Contains(err.Error(), "authorization_pending") {
+		t.Fatalf("poll before decision: err = %v, want authorization_pending", err)
+	}
+
+	pending, err := svc.ListPendingCIBA(ctx, userID)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("pending = %+v (err %v), want exactly 1", pending, err)
+	}
+	if pending[0].ClientName != "CIBA Client" || pending[0].BindingMessage == nil || *pending[0].BindingMessage != "Approve $50 payment" {
+		t.Fatalf("pending request = %+v", pending[0])
+	}
+
+	// A different user can't decide someone else's request.
+	otherUser := createUserIn(t, ctx, tenantID)
+	if err := svc.DecideBackchannel(ctx, otherUser, pending[0].ID, true); err == nil {
+		t.Fatal("a different user must not be able to decide this request")
+	}
+
+	if err := svc.DecideBackchannel(ctx, userID, pending[0].ID, true); err != nil {
+		t.Fatalf("decide: %v", err)
+	}
+	resp, err := svc.BackchannelToken(ctx, client.ClientID, authResp.AuthReqID)
+	if err != nil {
+		t.Fatalf("token poll after approval: %v", err)
+	}
+	if resp.AccessToken == "" || resp.RefreshToken == "" {
+		t.Fatalf("expected a full token pair, got %+v", resp)
+	}
+	claims, err := issuer.VerifyAccess(resp.AccessToken)
+	if err != nil || claims.Subject != userID.String() {
+		t.Fatalf("issued token subject = %v (err %v), want %v", claims, err, userID)
+	}
+
+	// The auth_req_id is one-time.
+	if _, err := svc.BackchannelToken(ctx, client.ClientID, authResp.AuthReqID); err == nil {
+		t.Fatal("reusing a consumed auth_req_id should fail")
+	}
+}
+
+// Shadow-AI discovery: a client that picks up a machine grant type
+// (client_credentials) surfaces as an unreviewed candidate, ranked by live
+// (active) refresh-token count, and reviewing it removes it from the list.
+func TestShadowAIDiscoveryAndReview(t *testing.T) {
+	requireDB(t)
+	ctx := context.Background()
+	tenantID := createTenant(t, ctx, uniqueSlug("shadow"))
+	reviewer := createUserIn(t, ctx, tenantID)
+
+	issuer := mustIssuer()
+	svc := oidc.NewService(testPool, issuer)
+
+	tx, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	// A plain human-login client (authorization_code/refresh_token only) must
+	// never appear as a shadow-AI candidate.
+	humanClient, _, err := svc.RegisterClient(ctx, tx, oidc.CreateClientInput{
+		TenantID: tenantID, Name: "Web App", RedirectURIs: []string{"https://app.example/cb"},
+	})
+	if err != nil {
+		t.Fatalf("register human client: %v", err)
+	}
+	// A client that also picked up client_credentials is a candidate.
+	shadowClient, _, err := svc.RegisterClient(ctx, tx, oidc.CreateClientInput{
+		TenantID: tenantID, Name: "Sideways Automation", RedirectURIs: []string{"https://app.example/cb"},
+		GrantTypes: []string{"authorization_code", "refresh_token", "client_credentials"},
+	})
+	if err != nil {
+		t.Fatalf("register shadow client: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	_ = humanClient
+
+	candidates, err := svc.ShadowAICandidates(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("shadow ai candidates: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].ID != shadowClient.ID {
+		t.Fatalf("candidates = %+v, want exactly the sideways-automation client", candidates)
+	}
+
+	if err := svc.ReviewShadowAIClient(ctx, tenantID, shadowClient.ID, reviewer); err != nil {
+		t.Fatalf("review: %v", err)
+	}
+	candidates, err = svc.ShadowAICandidates(ctx, tenantID)
+	if err != nil || len(candidates) != 0 {
+		t.Fatalf("candidates after review = %+v (err %v), want none", candidates, err)
+	}
+}
+
 // RFC 8693 token-exchange also supports an RFC 8707 resource indicator — the
 // MCP delegation case: an agent-delegated (act-claim) token scoped to one
 // specific downstream resource server.

@@ -43,6 +43,9 @@ type Client struct {
 type Service struct {
 	pool   *pgxpool.Pool
 	issuer *tokens.Issuer
+	// notifier delivers the CIBA async consent prompt (nil = no notification;
+	// the user must know to check pending requests themselves). See ciba.go.
+	notifier Notifier
 }
 
 func NewService(pool *pgxpool.Pool, issuer *tokens.Issuer) *Service {
@@ -112,6 +115,76 @@ func (s *Service) RegisterClient(ctx context.Context, tx pgx.Tx, in CreateClient
 		return nil, "", err
 	}
 	return &c, raw, nil
+}
+
+// ShadowAICandidate is an OIDC client capable of unattended machine access
+// (client_credentials or token-exchange in its grant_types) that hasn't been
+// explicitly reviewed — the same "unmanaged non-human identity" risk the
+// agents/service-accounts registries exist to close, surfaced for a client
+// that picked up a machine grant type sideways rather than through either
+// registry. LiveGrants counts its currently active (unexpired, unrevoked)
+// refresh tokens, as a rough signal of how much this matters right now.
+type ShadowAICandidate struct {
+	ID         uuid.UUID `json:"id"`
+	ClientID   string    `json:"client_id"`
+	Name       string    `json:"name"`
+	GrantTypes []string  `json:"grant_types"`
+	LiveGrants int       `json:"live_grants"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// machineGrantTypes are the grant types that let a client obtain a token
+// without a human present in the loop.
+var machineGrantTypes = []string{"client_credentials", grantTypeTokenExchange}
+
+// ShadowAICandidates lists tenantID's unreviewed OIDC clients whose
+// grant_types include a machine grant type, ordered by live-grant count so
+// the ones actually in active use surface first.
+func (s *Service) ShadowAICandidates(ctx context.Context, tenantID uuid.UUID) ([]ShadowAICandidate, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.id, c.client_id, c.name, c.grant_types, c.created_at,
+		       COALESCE(g.live, 0) AS live_grants
+		FROM auth.oidc_clients c
+		LEFT JOIN (
+			SELECT client_id, COUNT(*) AS live
+			FROM auth.oidc_refresh_tokens
+			WHERE revoked_at IS NULL AND expires_at > NOW()
+			GROUP BY client_id
+		) g ON g.client_id = c.client_id
+		WHERE c.tenant_id = $1
+		  AND c.reviewed_at IS NULL
+		  AND c.grant_types && $2::text[]
+		ORDER BY live_grants DESC, c.created_at DESC
+	`, tenantID, machineGrantTypes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ShadowAICandidate, 0)
+	for rows.Next() {
+		var c ShadowAICandidate
+		if err := rows.Scan(&c.ID, &c.ClientID, &c.Name, &c.GrantTypes, &c.CreatedAt, &c.LiveGrants); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ReviewShadowAIClient acknowledges a shadow-AI candidate, dropping it off
+// ShadowAICandidates until/unless its grant_types change again.
+func (s *Service) ReviewShadowAIClient(ctx context.Context, tenantID, id, reviewerUserID uuid.UUID) error {
+	ct, err := s.pool.Exec(ctx, `
+		UPDATE auth.oidc_clients SET reviewed_at = NOW(), reviewed_by = $1
+		WHERE id = $2 AND tenant_id = $3
+	`, reviewerUserID, id, tenantID)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return errs.ErrNotFound
+	}
+	return nil
 }
 
 // Authorize validates an authorization request for an already-authenticated
@@ -712,6 +785,8 @@ type Handler struct {
 func (h *Handler) Mount(r chi.Router) {
 	r.Post("/oidc/clients", h.registerClient)
 	r.Get("/oauth/userinfo", h.userinfo)
+	r.Get("/oauth/bc-authorize/pending", h.pendingBackchannel)
+	r.Post("/oauth/bc-authorize/decision", h.backchannelDecision)
 	r.Get("/tenants/{tenantID}/oauth/grants", h.listGrants)
 	r.Delete("/tenants/{tenantID}/oauth/grants/{id}", h.revokeGrant)
 
@@ -723,6 +798,8 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Patch("/tenants/{tenantID}/oidc/clients/{id}", h.patchClient)
 	r.Delete("/tenants/{tenantID}/oidc/clients/{id}", h.deleteClient)
 	r.Post("/tenants/{tenantID}/oidc/clients/{id}/rotate-secret", h.rotateClientSecret)
+	r.Get("/tenants/{tenantID}/oidc/clients/shadow-ai", h.shadowAI)
+	r.Post("/tenants/{tenantID}/oidc/clients/{id}/review", h.reviewShadowAI)
 
 	// The admin UI's list page wires Delete to the non-tenant-scoped
 	// /v1/oidc/clients/{id}; the create sheet posts to /v1/oidc/clients (handled
@@ -757,6 +834,11 @@ func (h *Handler) MountBrowser(r chi.Router) {
 	r.Post("/oauth/device_authorization", h.deviceAuthorization)
 	r.Get("/oauth/device", h.deviceContext)
 	r.Post("/oauth/device/decision", h.deviceDecision)
+	// OpenID CIBA (poll mode). bc-authorize is client-credential M2M like
+	// device_authorization above (CSRF-exempt in the router); the
+	// pending/decision endpoints are bearer-JWT authenticated and live in
+	// Mount, not here.
+	r.Post("/oauth/bc-authorize", h.backchannelAuthorize)
 }
 
 // loginContext gives the hosted login app what it needs to render itself for a
@@ -1106,6 +1188,20 @@ func (h *Handler) tokenCode(w http.ResponseWriter, r *http.Request) {
 		}
 		httpx.WriteJSON(w, http.StatusOK, resp)
 		return
+	case grantTypeCIBA:
+		// OpenID CIBA §10 polling. Same error-rendering shape as device_code.
+		resp, err = h.Service.BackchannelToken(r.Context(), clientID, r.Form.Get("auth_req_id"))
+		if err != nil {
+			var oe *oauthError
+			if errors.As(err, &oe) {
+				writeOAuthError(w, oe)
+				return
+			}
+			httpx.WriteError(w, r, err)
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, resp)
+		return
 	default:
 		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("unsupported grant_type"))
 		return
@@ -1189,7 +1285,11 @@ func (h *Handler) discovery(w http.ResponseWriter, r *http.Request) {
 		"subject_types_supported":               []string{"public"},
 		"id_token_signing_alg_values_supported": []string{h.Service.issuer.Alg()},
 		"scopes_supported":                      []string{"openid", "profile", "email"},
-		"grant_types_supported":                 []string{"authorization_code", "client_credentials", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code", grantTypeTokenExchange},
+		"grant_types_supported":                 []string{"authorization_code", "client_credentials", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code", grantTypeTokenExchange, grantTypeCIBA},
+		// OpenID CIBA — poll mode only (no ping/push notification_endpoint).
+		"backchannel_token_delivery_modes_supported": []string{"poll"},
+		"backchannel_authentication_endpoint":         base + "/v1/oauth/bc-authorize",
+		"backchannel_user_code_parameter_supported":   false,
 		"code_challenge_methods_supported":      []string{"S256"},
 		// RFC 9728 — Protected Resource Metadata discovery link
 		"protected_resource_metadata": base + "/.well-known/oauth-protected-resource",
@@ -1197,6 +1297,12 @@ func (h *Handler) discovery(w http.ResponseWriter, r *http.Request) {
 		"resource_indicators_supported": true,
 		// RFC 9207 — the authorization response carries an `iss` parameter.
 		"authorization_response_iss_parameter_supported": true,
+		// Non-standard: advertises first-class non-human principals. Rather
+		// than a sub-prefix convention (which would break RFC 8693 token
+		// exchange's assumption that subject_token's sub is a parseable user
+		// UUID — see TokenExchange), an agent token self-describes via the
+		// actor_type + agent_id claims, also surfaced on /oauth/introspect.
+		"actor_types_supported": []string{"user", "service", "agent"},
 	})
 }
 

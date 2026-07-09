@@ -14,6 +14,7 @@ import (
 
 	"github.com/qeetgroup/qeet-id/domains/access/authentication"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/authpolicy"
+	"github.com/qeetgroup/qeet-id/domains/access/authorization/authzen"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/policy"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/rbac"
 	"github.com/qeetgroup/qeet-id/domains/access/mfa"
@@ -27,6 +28,7 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/developer/webhooks"
 	"github.com/qeetgroup/qeet-id/domains/federation/ldap"
 	"github.com/qeetgroup/qeet-id/domains/federation/oidc"
+	"github.com/qeetgroup/qeet-id/domains/federation/adminportal"
 	"github.com/qeetgroup/qeet-id/domains/federation/saml"
 	"github.com/qeetgroup/qeet-id/domains/federation/scim"
 	"github.com/qeetgroup/qeet-id/domains/federation/social"
@@ -86,7 +88,9 @@ func testDeps() Deps {
 		SCIM:           &scim.Handler{},
 		Secret:         &secret.Handler{},
 		TokenVault:     &tokenvault.Handler{},
+		AuthZEN:        &authzen.Handler{},
 		SAML:           &saml.Handler{IdP: &saml.IdP{}},
+		AdminPortal:    &adminportal.Handler{},
 		LDAP:           &ldap.Handler{},
 		IPAllow:        &ipallow.Handler{},
 		Health:         &health.Handler{},

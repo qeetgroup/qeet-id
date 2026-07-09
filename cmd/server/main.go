@@ -23,6 +23,7 @@ import (
 
 	"github.com/qeetgroup/qeet-id/domains/access/authentication"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/authpolicy"
+	"github.com/qeetgroup/qeet-id/domains/access/authorization/authzen"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/policy"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/rbac"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/rebac"
@@ -41,6 +42,7 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/developer/credentials/vc"
 	"github.com/qeetgroup/qeet-id/domains/developer/service-accounts"
 	"github.com/qeetgroup/qeet-id/domains/developer/webhooks"
+	"github.com/qeetgroup/qeet-id/domains/federation/adminportal"
 	"github.com/qeetgroup/qeet-id/domains/federation/ldap"
 	"github.com/qeetgroup/qeet-id/domains/federation/oidc"
 	"github.com/qeetgroup/qeet-id/domains/federation/saml"
@@ -342,10 +344,11 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 	riskService := risk.NewService(pool)
 	authService.SetRiskAssessor(riskService) // override trusted-device skip when risk is too high
 	botService := bot.NewService(pool)
-	siemService := siem.NewService(pool)           // forwards audit events to configured log sinks
-	rebacService := rebac.NewService(pool)         // fine-grained (relationship) authorization
-	agentService := agent.NewService(pool, issuer) // AI-agent identities (ephemeral scoped tokens)
-	vcService := vc.NewService(pool, issuer)       // W3C verifiable credentials (JWT-VC)
+	siemService := siem.NewService(pool)                         // forwards audit events to configured log sinks
+	rebacService := rebac.NewService(pool)                       // fine-grained (relationship) authorization
+	authzenService := authzen.NewService(rbacRepo, rebacService) // OpenID AuthZEN PDP facade over RBAC/ReBAC
+	agentService := agent.NewService(pool, issuer)               // AI-agent identities (ephemeral scoped tokens)
+	vcService := vc.NewService(pool, issuer)                     // W3C verifiable credentials (JWT-VC)
 	webhookService := webhook.NewService(pool)
 	// Agent lifecycle: emit webhook events on transitions, and let the auth
 	// middleware deny suspended/decommissioned agents' tokens per request.
@@ -362,6 +365,7 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 	healthHandler.AddReadiness("db", health.PingDB(pool))
 	inFlight := httpx.NewInFlight()
 	oidcService := oidc.NewService(pool, issuer)
+	oidcService.SetNotifier(notificationService) // CIBA async consent prompts
 	rpID, rpDisplayName, rpOrigins := cfg.WebAuthnRP()
 	wa, err := webauthn.New(&webauthn.Config{RPID: rpID, RPDisplayName: rpDisplayName, RPOrigins: rpOrigins})
 	if err != nil {
@@ -415,6 +419,8 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 		slog.Error("init saml idp", "err", err)
 		os.Exit(1)
 	}
+
+	adminPortalService := adminportal.NewService(pool, brandingRepo, cfg.LoginBaseURL)
 
 	ldapService := ldap.NewService(pool, authService)
 	ipAllowService := ipallow.NewService(pool)
@@ -503,6 +509,7 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 		Secret:        &secret.Handler{Service: secretService},
 		TokenVault:    &tokenvault.Handler{Service: tokenVaultService},
 		SAML:          &saml.Handler{Service: samlService, IdP: samlIdP, CookieSecure: cfg.ServiceEnv != "dev"},
+		AdminPortal:   &adminportal.Handler{Service: adminPortalService, SAML: samlService, SCIM: scimService},
 		LDAP:          &ldap.Handler{Service: ldapService},
 		IPAllow:       &ipallow.Handler{Service: ipAllowService},
 		Threat:        &threat.Handler{Service: threatService},
@@ -514,6 +521,7 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 		SIEM:          &siem.Handler{Service: siemService},
 		AuthHook:      &authhook.Handler{Service: authHookService},
 		ReBAC:         &rebac.Handler{Service: rebacService},
+		AuthZEN:       &authzen.Handler{Service: authzenService},
 		Agent:         &agent.Handler{Service: agentService},
 		VC:            &vc.Handler{Service: vcService},
 		Health:        healthHandler,

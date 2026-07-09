@@ -137,11 +137,11 @@ Deep dives: [`docs/architecture/`](./docs/architecture/) · Decision records: [`
 
 **🔑 Authentication & sessions** — email+password (Argon2id, lockout, enumeration-safe) · passkeys/WebAuthn (FIDO2, cross-device), **including passkey-first signup** (a passkey founds the account directly — no password required) · magic links · email/SMS OTP · TOTP + 8 recovery codes · MFA step-up · session mgmt (refresh rotation + theft detection) · HIBP breach detection · password reset.
 
-**🏢 Enterprise SSO & provisioning** — OIDC/OAuth 2.0 provider (discovery, JWKS, PKCE, `/userinfo`, refresh, revoke, introspect, logout) · Device Authorization Grant (RFC 8628) · Token Exchange (RFC 8693, downscope + delegation) · SAML 2.0 SP **and** IdP · SCIM 2.0 (users + groups + PatchOp) · LDAP/AD · social login · account linking · SSO test-connection.
+**🏢 Enterprise SSO & provisioning** — OIDC/OAuth 2.0 provider (discovery, JWKS, PKCE, `/userinfo`, refresh, revoke, introspect, logout) · Device Authorization Grant (RFC 8628) · Token Exchange (RFC 8693, downscope + delegation) · CIBA backchannel auth · SAML 2.0 SP **and** IdP · SCIM 2.0 (users + groups + PatchOp) · LDAP/AD · social login · account linking · SSO test-connection · **self-serve Admin Portal** (a capability-scoped, time-limited link lets a tenant's *own* IT admin configure SAML/SCIM directly — no Qeet ID account, no console login).
 
 **🛡️ Authorization** — RBAC (`?explain=true` grant-path trace) · per-tenant policy (IP allow/deny CIDR, password/login-method rules — not a general ABAC engine) · **ReBAC** (`relation_tuples`, recursive `/check` with cycle guard, **`?explain=true` grant-path trace**) · Auth Hooks/Actions (post-login allow/deny **+ custom-claim injection**, HMAC-signed).
 
-**🤖 Developer & AI-agent platform** — scoped API keys (`qk_`, hashed, audited) · service accounts (`client_credentials`) · secrets vault (AES-256-GCM, scoped `vault:<name>`) · **Token Vault** (per-tenant encrypted 3rd-party OAuth tokens — Slack/GitHub/Google/custom — with auto-refresh; callers never see the raw refresh token) · HMAC webhooks (backoff retry with a dead-letter give-up state after `maxDeliveryAttempts`) · **AI-agent identity** (ephemeral scoped revocable tokens, `actor_type=agent`, tenant-wide kill-switch, lifecycle state machine) · **MCP introspection** · **token delegation** (RFC 8693 `act` claim) · **W3C JWT-VC** (issue/verify/revoke) · analytics · SIEM streaming.
+**🤖 Developer & AI-agent platform** — scoped API keys (`qk_`, hashed, audited) · service accounts (`client_credentials`) · secrets vault (AES-256-GCM, scoped `vault:<name>`) · **Token Vault** (per-tenant encrypted 3rd-party OAuth tokens — Slack/GitHub/Google/custom — with auto-refresh; callers never see the raw refresh token; API-only, no console UI) · HMAC webhooks (backoff retry with a dead-letter give-up state after `maxDeliveryAttempts`) · **Agent Governance** — one named console section (`/developer/agents`), not scattered settings: ephemeral scoped revocable tokens (`actor_type=agent`), tenant-wide kill-switch, lifecycle state machine, a sponsor-transfer tool (search-select, previews affected count), and a Shadow-AI review queue (unreviewed OIDC clients holding machine grants) · **Agent-as-Principal** (`actor_types_supported` discovery metadata) · **CIBA** backchannel auth (poll mode, API-only) · **AuthZEN PDP/PEP** (`POST /tenants/{id}/access/v1/evaluation`, standard facade over RBAC/ReBAC) · **MCP introspection** · **token delegation** (RFC 8693 `act` claim) · **W3C JWT-VC** (issue/verify/revoke) · analytics · SIEM streaming.
 
 **👥 Identity & workspace** — multi-tenant orgs (isolated, branded, custom domains) · users (CRUD, sessions, recycle bin, bulk CSV/NDJSON import, **IdP migration import from Auth0/Cognito/Azure AD B2C**) · nested groups (SCIM sync) · invitations · domain verification (DNS TXT) · per-tenant email templates · org switcher + branding preview.
 
@@ -155,14 +155,11 @@ Deep dives: [`docs/architecture/`](./docs/architecture/) · Decision records: [`
 <br>
 
 **🛠 Product roadmap**
-- CIBA grant
 - i18n catalogs + WCAG 2.2 AA across remaining legacy screens
 - Ops hardening (not code): AWS KMS BYOK, OpenID conformance run, deliverability (SPF/DKIM/DMARC), RDS PITR, external pentest
 
-**🤖 AI-agent identity & governance** *(surfaced by the competitive-research `product-manager` agent — 🟠 high · 🟡 medium · 🟢 later; agent lifecycle state machine + kill-switch already ship)*
-- 🟡 **Agent-as-Principal** — first-class non-human OIDC principal (`sub_type=agent`)
-- 🟡 **Shadow-AI discovery** — flag unmanaged OAuth clients holding live grants · 🟡 **Agent sponsor model** — named owner + auto-transfer on offboarding
-- 🟡 **AuthZEN PDP/PEP** — OpenID-standard `/evaluation` endpoint + COAZ MCP profile · 🟡 **SSF/CAEP** — real-time revocation signals to downstream gateways
+**🤖 AI-agent identity & governance** *(surfaced by the competitive-research `product-manager` agent — 🟠 high · 🟡 medium · 🟢 later; agent lifecycle/sponsor model, Agent-as-Principal, Shadow-AI discovery, CIBA, and AuthZEN PDP/PEP already ship)*
+- 🟡 **SSF/CAEP** — real-time revocation signals to downstream gateways
 - 🟢 **Device-bound agent credentials** — TPM/enclave-attested keys (RFC 8705 mTLS)
 
 **🧰 Developer experience**
