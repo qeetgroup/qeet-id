@@ -1,12 +1,14 @@
-// Package risk aggregates bot-detection, failed-login, and trusted-device
-// signals into a per-request risk level. The level drives adaptive MFA: a High
-// request is forced through a second factor even if the device is trusted.
+// Package risk aggregates bot-detection, impossible-travel, and
+// device-reputation signals into a per-request risk level. The level drives
+// adaptive MFA: a High request is forced through a second factor even if the
+// device is trusted.
 package risk
 
 import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -40,13 +42,60 @@ func (l Level) String() string {
 
 // Settings are the per-tenant risk thresholds stored in auth.risk_settings.
 type Settings struct {
-	MediumThreshold  float64 `json:"medium_threshold"`
-	HighThreshold    float64 `json:"high_threshold"`
-	ForceMFAAtLevel  string  `json:"force_mfa_at_level"`
+	MediumThreshold float64 `json:"medium_threshold"`
+	HighThreshold   float64 `json:"high_threshold"`
+	ForceMFAAtLevel string  `json:"force_mfa_at_level"`
+	// ImpossibleTravelEnabled flags a login from a different country than the
+	// user's last-seen one, sooner than MinTravelHours could plausibly allow.
+	// Off by default: it needs a country signal (see Assess) to do anything,
+	// and — like any new heuristic — shouldn't start affecting logins until a
+	// tenant opts in.
+	ImpossibleTravelEnabled bool    `json:"impossible_travel_enabled"`
+	MinTravelHours          float64 `json:"min_travel_hours"`
+	// DeviceReputationEnabled flags a login from a browser+OS combination
+	// never seen before for this user.
+	DeviceReputationEnabled bool `json:"device_reputation_enabled"`
 }
 
 func defaultSettings() Settings {
-	return Settings{MediumThreshold: 0.50, HighThreshold: 0.80, ForceMFAAtLevel: "high"}
+	return Settings{
+		MediumThreshold: 0.50, HighThreshold: 0.80, ForceMFAAtLevel: "high",
+		MinTravelHours: 3,
+	}
+}
+
+// Additive score contributions for the two new signals, on top of the
+// existing bot.Score(ua) base — "additive checks on the existing threshold
+// engine," not a reweighting of it. Impossible travel is treated as the
+// stronger signal (few legitimate reasons to cross a border in under
+// MinTravelHours); a brand-new device is common (new phone, cleared
+// cookies) so contributes less.
+const (
+	impossibleTravelBump = 0.5
+	newDeviceBump        = 0.25
+)
+
+// computeLevel is Assess's pure decision core, split out so it's unit-testable
+// without a database: given the already-resolved signals, what Level results.
+func computeLevel(settings Settings, botScore float64, impossibleTravel, newDevice bool) Level {
+	score := botScore
+	if impossibleTravel {
+		score += impossibleTravelBump
+	}
+	if newDevice {
+		score += newDeviceBump
+	}
+	if score > 1 {
+		score = 1
+	}
+	switch {
+	case score >= settings.HighThreshold:
+		return High
+	case score >= settings.MediumThreshold:
+		return Medium
+	default:
+		return Low
+	}
 }
 
 // Service assesses risk and manages per-tenant risk settings.
@@ -56,25 +105,42 @@ type Service struct {
 
 func NewService(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
 
-// Assess returns the risk Level for an authentication request. Inputs are the
-// user's UA string and the tenant whose thresholds apply. Fails open (Low) on
-// any DB error so a misconfigured risk table never blocks login.
-func (s *Service) Assess(ctx context.Context, tenantID uuid.UUID, ua string) Level {
+// Assess returns the risk Level for an authentication request, and records
+// this login's device/country into the user's history for future
+// assessments. country is resolved by the caller (e.g. from a trusted
+// upstream proxy header); pass "" when no geo signal is available — an
+// impossible-travel check with no country data simply never fires.
+// Fails open (Low) on any DB error so a misconfigured risk table never
+// blocks login.
+func (s *Service) Assess(ctx context.Context, tenantID, userID uuid.UUID, ip, ua, country string) Level {
 	settings, err := s.GetSettings(ctx, tenantID)
 	if err != nil {
 		slog.Warn("risk: could not load settings, defaulting to Low", "tenant_id", tenantID, "err", err)
 		return Low
 	}
 
-	score := bot.Score(ua)
-	switch {
-	case score >= settings.HighThreshold:
-		return High
-	case score >= settings.MediumThreshold:
-		return Medium
-	default:
-		return Low
+	var impossibleTravel, newDevice bool
+	dk := deviceKey(ua)
+
+	if settings.ImpossibleTravelEnabled && country != "" {
+		lastCountry, lastSeenAt, ok := s.lastCountry(ctx, tenantID, userID)
+		if ok && lastCountry != country {
+			elapsed := time.Since(lastSeenAt).Hours()
+			if elapsed < settings.MinTravelHours {
+				impossibleTravel = true
+			}
+		}
 	}
+	if settings.DeviceReputationEnabled {
+		seen, err := s.deviceSeenBefore(ctx, tenantID, userID, dk)
+		if err == nil && !seen {
+			newDevice = true
+		}
+	}
+
+	s.recordLogin(ctx, tenantID, userID, dk, country)
+
+	return computeLevel(settings, bot.Score(ua), impossibleTravel, newDevice)
 }
 
 // ForceMFA reports whether the risk level should force MFA regardless of
@@ -92,19 +158,22 @@ func (s *Service) ForceMFA(ctx context.Context, tenantID uuid.UUID, level Level)
 	}
 }
 
-// ShouldForceMFA satisfies the auth.RiskAssessor interface. It assesses the UA
-// and returns true when the resulting risk level exceeds the tenant threshold.
-func (s *Service) ShouldForceMFA(ctx context.Context, tenantID uuid.UUID, ua string) bool {
-	level := s.Assess(ctx, tenantID, ua)
+// ShouldForceMFA satisfies the auth.RiskAssessor interface. It assesses the
+// request and returns true when the resulting risk level exceeds the
+// tenant's force-MFA threshold.
+func (s *Service) ShouldForceMFA(ctx context.Context, tenantID, userID uuid.UUID, ip, ua, country string) bool {
+	level := s.Assess(ctx, tenantID, userID, ip, ua, country)
 	return s.ForceMFA(ctx, tenantID, level)
 }
 
 func (s *Service) GetSettings(ctx context.Context, tenantID uuid.UUID) (Settings, error) {
 	var st Settings
 	err := s.pool.QueryRow(ctx, `
-		SELECT medium_threshold, high_threshold, force_mfa_at_level
+		SELECT medium_threshold, high_threshold, force_mfa_at_level,
+		       impossible_travel_enabled, min_travel_hours, device_reputation_enabled
 		FROM auth.risk_settings WHERE tenant_id = $1
-	`, tenantID).Scan(&st.MediumThreshold, &st.HighThreshold, &st.ForceMFAAtLevel)
+	`, tenantID).Scan(&st.MediumThreshold, &st.HighThreshold, &st.ForceMFAAtLevel,
+		&st.ImpossibleTravelEnabled, &st.MinTravelHours, &st.DeviceReputationEnabled)
 	if err == pgx.ErrNoRows {
 		return defaultSettings(), nil
 	}
@@ -180,15 +249,25 @@ func (s *Service) UpdateSettings(ctx context.Context, tenantID uuid.UUID, in Set
 	if in.ForceMFAAtLevel != "medium" {
 		in.ForceMFAAtLevel = "high"
 	}
+	if in.MinTravelHours <= 0 {
+		in.MinTravelHours = defaultSettings().MinTravelHours
+	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO auth.risk_settings (tenant_id, medium_threshold, high_threshold, force_mfa_at_level, updated_at)
-		VALUES ($1, $2, $3, $4, NOW())
+		INSERT INTO auth.risk_settings (
+			tenant_id, medium_threshold, high_threshold, force_mfa_at_level,
+			impossible_travel_enabled, min_travel_hours, device_reputation_enabled, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
 		ON CONFLICT (tenant_id) DO UPDATE SET
-			medium_threshold  = EXCLUDED.medium_threshold,
-			high_threshold    = EXCLUDED.high_threshold,
-			force_mfa_at_level = EXCLUDED.force_mfa_at_level,
-			updated_at        = NOW()
-	`, tenantID, in.MediumThreshold, in.HighThreshold, in.ForceMFAAtLevel)
+			medium_threshold           = EXCLUDED.medium_threshold,
+			high_threshold             = EXCLUDED.high_threshold,
+			force_mfa_at_level         = EXCLUDED.force_mfa_at_level,
+			impossible_travel_enabled  = EXCLUDED.impossible_travel_enabled,
+			min_travel_hours           = EXCLUDED.min_travel_hours,
+			device_reputation_enabled  = EXCLUDED.device_reputation_enabled,
+			updated_at                 = NOW()
+	`, tenantID, in.MediumThreshold, in.HighThreshold, in.ForceMFAAtLevel,
+		in.ImpossibleTravelEnabled, in.MinTravelHours, in.DeviceReputationEnabled)
 	if err != nil {
 		return Settings{}, err
 	}

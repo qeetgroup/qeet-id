@@ -154,11 +154,11 @@ func permissionMap() map[string]string {
 		"GET /v1/admin/outbox/dlq":                "audit.read",
 
 		// Audit intelligence: behavioral-baseline anomaly detection over audit.events.
-		"GET /v1/tenants/{tenantID}/audit/anomalies":         "audit.read",
-		"GET /v1/tenants/{tenantID}/audit/anomalies/summary": "audit.read",
+		"GET /v1/tenants/{tenantID}/audit/anomalies":               "audit.read",
+		"GET /v1/tenants/{tenantID}/audit/anomalies/summary":       "audit.read",
 		"POST /v1/tenants/{tenantID}/audit/anomalies/{id}/resolve": "audit.write",
-		"GET /v1/tenants/{tenantID}/audit/anomaly-settings":         "audit.read",
-		"PUT /v1/tenants/{tenantID}/audit/anomaly-settings":         "audit.write",
+		"GET /v1/tenants/{tenantID}/audit/anomaly-settings":        "audit.read",
+		"PUT /v1/tenants/{tenantID}/audit/anomaly-settings":        "audit.write",
 
 		// Billing (GET /v1/billing/plans is a public catalog — ungated).
 		"GET /v1/tenants/{tenantID}/billing/subscription":         "billing.read",

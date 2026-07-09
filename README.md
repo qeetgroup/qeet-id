@@ -135,7 +135,7 @@ Deep dives: [`docs/architecture/`](./docs/architecture/) · Decision records: [`
 
 <br>
 
-**🔑 Authentication & sessions** — email+password (Argon2id, lockout, enumeration-safe) · passkeys/WebAuthn (FIDO2, cross-device), **including passkey-first signup** (a passkey founds the account directly — no password required) · magic links · email/SMS OTP · TOTP + 8 recovery codes · MFA step-up · session mgmt (refresh rotation + theft detection) · HIBP breach detection · password reset.
+**🔑 Authentication & sessions** — email+password (Argon2id, lockout, enumeration-safe) · passkeys/WebAuthn (FIDO2, cross-device), **including passkey-first signup** (a passkey founds the account directly — no password required) · magic links · email/SMS OTP · TOTP + 8 recovery codes · **adaptive MFA** (bot-score risk engine plus two additive, off-by-default signals: impossible travel and device reputation) · session mgmt (refresh rotation + theft detection, a 10-minute access-token TTL, refresh now also rejects a suspended/deleted user) · **CAEP/SSF-shaped revocation signals** (`session.revoked`, `token.claims_change`) riding the existing webhook dispatcher · HIBP breach detection · password reset.
 
 **🏢 Enterprise SSO & provisioning** — OIDC/OAuth 2.0 provider (discovery, JWKS, PKCE, `/userinfo`, refresh, revoke, introspect, logout) · Device Authorization Grant (RFC 8628) · Token Exchange (RFC 8693, downscope + delegation) · CIBA backchannel auth · SAML 2.0 SP **and** IdP · SCIM 2.0 (users + groups + PatchOp) · LDAP/AD · social login · account linking · SSO test-connection · **self-serve Admin Portal** (a capability-scoped, time-limited link lets a tenant's *own* IT admin configure SAML/SCIM directly — no Qeet ID account, no console login).
 
@@ -145,7 +145,7 @@ Deep dives: [`docs/architecture/`](./docs/architecture/) · Decision records: [`
 
 **👥 Identity & workspace** — multi-tenant orgs (isolated, branded, custom domains) · users (CRUD, sessions, recycle bin, bulk CSV/NDJSON import, **IdP migration import from Auth0/Cognito/Azure AD B2C**) · nested groups (SCIM sync) · invitations · domain verification (DNS TXT) · per-tenant email templates · org switcher + branding preview.
 
-**📜 Compliance & billing** — SHA-256 hash-chained audit (`/verify`) · GDPR erasure + grace-period purge · GDPR data export (async, profile/sessions/passkeys/roles/MFA status) · retention auto-purge · SOC 2 / ISO 27001 compliance screens (static templates, not generated evidence) · multi-currency billing (ISO-4217) · card payments via Stripe (global) + Razorpay (India), webhook-verified (env-gated).
+**📜 Compliance & billing** — SHA-256 hash-chained audit (`/verify`) · **audit intelligence** (behavioral-baseline anomaly detection over the audit log — first-time action types, unusual hours, new IPs — with per-tenant tuning) · GDPR erasure + grace-period purge · GDPR data export (async, profile/sessions/passkeys/roles/MFA status) · retention auto-purge · SOC 2 / ISO 27001 compliance screens (static templates, not generated evidence) · multi-currency billing (ISO-4217) · card payments via Stripe (global) + Razorpay (India), webhook-verified (env-gated).
 
 </details>
 
@@ -158,8 +158,7 @@ Deep dives: [`docs/architecture/`](./docs/architecture/) · Decision records: [`
 - i18n catalogs + WCAG 2.2 AA across remaining legacy screens
 - Ops hardening (not code): AWS KMS BYOK, OpenID conformance run, deliverability (SPF/DKIM/DMARC), RDS PITR, external pentest
 
-**🤖 AI-agent identity & governance** *(surfaced by the competitive-research `product-manager` agent — 🟠 high · 🟡 medium · 🟢 later; agent lifecycle/sponsor model, Agent-as-Principal, Shadow-AI discovery, CIBA, and AuthZEN PDP/PEP already ship)*
-- 🟡 **SSF/CAEP** — real-time revocation signals to downstream gateways
+**🤖 AI-agent identity & governance** *(surfaced by the competitive-research `product-manager` agent — 🟠 high · 🟡 medium · 🟢 later; agent lifecycle/sponsor model, Agent-as-Principal, Shadow-AI discovery, CIBA, AuthZEN PDP/PEP, and CAEP/SSF-shaped revocation signals already ship)*
 - 🟢 **Device-bound agent credentials** — TPM/enclave-attested keys (RFC 8705 mTLS)
 
 **🧰 Developer experience**

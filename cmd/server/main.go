@@ -57,6 +57,7 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/identity/verification"
 	"github.com/qeetgroup/qeet-id/domains/operations/analytics"
 	"github.com/qeetgroup/qeet-id/domains/operations/audit"
+	"github.com/qeetgroup/qeet-id/domains/operations/audit/anomaly"
 	"github.com/qeetgroup/qeet-id/domains/operations/billing"
 	"github.com/qeetgroup/qeet-id/domains/operations/compliance"
 	"github.com/qeetgroup/qeet-id/domains/operations/email-templates"
@@ -284,6 +285,7 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 	tenantRepo := tenant.NewRepository(pool)
 	userRepo := user.NewRepository(pool)
 	rbacRepo := rbac.NewRepository(pool)
+	rbacService := rbac.NewService(rbacRepo)
 	if err := rbacRepo.SeedBuiltins(rootCtx); err != nil {
 		slog.Warn("rbac seed", "err", err)
 	}
@@ -354,9 +356,15 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 	// middleware deny suspended/decommissioned agents' tokens per request.
 	agentService.SetEmitter(webhookService.Enqueue)
 	verifier.AgentStatus = agentService.AgentStatus
+	// CAEP/SSF-shaped signals over the existing webhook dispatcher: a tenant
+	// that subscribes to these can react to a revoked session or a changed
+	// role grant immediately, instead of waiting out the access-token TTL.
+	authService.SetEmitter(webhookService.Enqueue)
+	rbacService.SetEmitter(webhookService.Enqueue)
 	gdprService := gdpr.NewService(pool, 30*24*time.Hour)
 	auditReader := audit.NewReader(pool)
 	auditVerifier := audit.NewVerifier(pool)
+	auditAnomalyService := anomaly.NewService(pool)
 	analyticsReader := analytics.NewReader(pool)
 	outboxReader := outbox.NewReader(pool)
 
@@ -481,8 +489,8 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 		Tenant:        &tenant.Handler{Repo: tenantRepo, Validate: v, AuthService: authService},
 		User:          &user.Handler{Repo: userRepo, Validate: v, PasswordPolicy: authPolicyService.ValidateForTenant, MFA: mfaService},
 		AuthPolicy:    &authpolicy.Handler{Service: authPolicyService},
-		Auth:          &auth.Handler{Service: authService, Validate: v, CookieSecure: cfg.ServiceEnv != "dev", Bot: botService},
-		RBAC:          &rbac.Handler{Repo: rbacRepo, Service: rbac.NewService(rbacRepo), Validate: v},
+		Auth:          &auth.Handler{Service: authService, Validate: v, CookieSecure: cfg.ServiceEnv != "dev", Bot: botService, GeoCountryHeader: cfg.GeoCountryHeader},
+		RBAC:          &rbac.Handler{Repo: rbacRepo, Service: rbacService, Validate: v},
 		RBACChecker:   rbacRepo,
 		Verification:  &verification.Handler{Service: verifyService},
 		Recovery:      &recovery.Handler{Service: recoveryService, AuthService: authService},
@@ -498,6 +506,7 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 		Policy:        &policy.Handler{Repo: policyRepo},
 		GDPR:          &gdpr.Handler{Service: gdprService},
 		Audit:         &audit.Handler{Reader: auditReader, Verifier: auditVerifier},
+		AuditAnomaly:  &anomaly.Handler{Service: auditAnomalyService},
 		Billing:       &billing.Handler{Service: billingService},
 		Analytics:     &analytics.Handler{Reader: analyticsReader},
 		Outbox:        &outbox.Handler{Reader: outboxReader},
@@ -544,6 +553,7 @@ func buildDeps(rootCtx context.Context, cfg *config.Config, pool *pgxpool.Pool) 
 		{name: "gdpr", run: gdprService.Run},
 		{name: "retention", run: retentionService.Run},
 		{name: "siem", run: siemService.Run},
+		{name: "audit-anomaly", run: auditAnomalyService.Run},
 	}
 	return deps, workers
 }

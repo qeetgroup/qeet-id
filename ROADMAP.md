@@ -28,8 +28,8 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 - ✅ Passkeys / WebAuthn (FIDO2, resident credentials, cross-device) · **passkey-first signup** — a passkey can found a new account directly, no password required (`/signup/passkey/*` tenant-less, `/register/passkey/*` hosted signup UI; password stays available as an alternative)
 - ✅ Magic links · email OTP · SMS OTP
 - ✅ TOTP (RFC 6238) + 8 recovery codes · MFA step-up (per-operation elevation)
-- ✅ Adaptive / risk-based MFA — per-tenant risk thresholds drive step-up / force-MFA (`0063_risk_settings`)
-- ✅ Session management — refresh rotation + theft detection + silent revocation
+- ✅ Adaptive / risk-based MFA — per-tenant risk thresholds drive step-up / force-MFA (`0063_risk_settings`), extended with two additive, independently-togglable signals on top of the base bot-score engine (`0077_adaptive_risk`, off by default): **impossible travel** (a login from a new country sooner than a configurable minimum plausible travel time after the last one — geo comes from a trusted upstream proxy header, e.g. Cloudflare's `CF-IPCountry`; no signal configured = the check never fires, fail-open) and **device reputation** (a login from a browser+OS combination never seen before for that user)
+- ✅ Session management — refresh rotation + theft detection + silent revocation, plus a pragmatic, CAEP/SSF-*shaped* real-time revocation path (not full protocol interop): a 10-minute access-token TTL bounds how long a revoked-but-unexpired token stays usable (access tokens are stateless JWTs — no per-request DB check); `POST /auth/refresh` now also rejects a suspended or soft-deleted user's still-valid refresh token (previously only the session's own `revoked_at` was checked — a plain status change never touched `auth.sessions`); and two signals ride the existing webhook dispatcher so a subscribed tenant reacts immediately instead of waiting out the TTL — `session.revoked` (logout, explicit session revoke, and refresh-token-reuse theft detection) and `token.claims_change` (a direct role grant/revoke). Both are opt-in via the webhook's own `events` filter, no new settings surface
 - ✅ Breached-password detection (HIBP k-anonymity, env-gated) · password reset
 
 ### 🏢 Enterprise SSO & provisioning
@@ -59,7 +59,7 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 - ✅ Domain verification (DNS TXT) · per-tenant email templates · org switcher + branding preview
 
 ### 📜 Compliance & billing
-- ✅ SHA-256 hash-chained audit log (`/verify` integrity walk) · GDPR erasure + grace-period purge · retention auto-purge
+- ✅ SHA-256 hash-chained audit log (`/verify` integrity walk) · **audit intelligence** — a background sweep builds a rolling behavioral baseline per `(tenant, actor)` (action types, hour-of-day, IPs) and flags deviations (first-time action, unusual hour, new IP) as a transparent, weighted-novelty score with named reasons — not a black-box model; per-tenant threshold + cold-start guard, console screen at Security & Compliance → Audit Intelligence · GDPR erasure + grace-period purge · retention auto-purge
 - ✅ GDPR data export — async job (`user.export_requests`), payload covers profile/sessions/passkeys/roles/MFA status, `/gdpr/export` + `/gdpr/export/{id}` download
 - ✅ Multi-currency billing (ISO-4217) · card payments — Stripe (global) + Razorpay (India), webhook-verified (env-gated)
 - 🟡 SOC 2 / ISO 27001 compliance screens are **static templates**, not generated evidence
@@ -80,14 +80,12 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 | i18n — remaining coverage | 🟡 | 8 console catalogs (en+7) exist w/ partial namespaces; remaining screens + locale-aware emails + login app pending |
 | WCAG 2.2 AA — a11y gate + legacy screens | 🟡 | ⚠️ the a11y eslint globs point at renamed `qeetid-admin`/`qeetid-login` dirs (gate matches 0 files today); fix globs, then audit ~70 older screens |
 | SOC 2 / ISO 27001 evidence generation | 🟡 | Compliance screens are static templates; generated evidence pending |
-| Adaptive-MFA depth | 🟢 | Threshold engine ships (`0063`); richer signals (impossible-travel, device reputation) pending |
 
 ### 🤖 AI-agent identity & governance
 *Surfaced by the `product-manager` agent from live competitive research (Auth0 / Okta / WorkOS / Descope / Microsoft Entra).*
 
 | Feature | Priority | What it adds |
 |---|---|---|
-| **SSF / CAEP events** | 🟡 | Real-time `session-revoked` / `token-claims-change` signals pushed to downstream gateways |
 | **Device-bound agent credentials** | 🟢 | TPM/enclave-attested keys + RFC 8705 mTLS — non-exportable, non-replayable M2M creds |
 
 ### 🧰 Developer experience
@@ -176,12 +174,12 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 | Data export | ✅ | ✅ | ✅ | 🟡 | 🟡 | 🟡 | ✅ | 🟡 | 🟡 |
 | Distributed rate limiting (Redis) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Metrics + distributed tracing (OTel) | ✅ | ✅ | 🟡 | ✅ | 🟡 | ✅ | ✅ | ✅ | ✅ |
-| Adaptive / risk-based MFA | 🟡³ | ✅ | 🟡 | 🟡 | ✅ | 🟡 | ✅ | 🟡 | 🟡 |
+| Adaptive / risk-based MFA | ✅³ | ✅ | 🟡 | 🟡 | ✅ | 🟡 | ✅ | 🟡 | 🟡 |
 | **Bot detection** | ✅ | ✅ | 🟡 | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
 | Breached-password detection | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 | ✅ | 🟡 | 🟡 |
 | Secrets vault / BYOK (KMS) | ✅⁷ | ✅ | ❌ | 🟡 | 🟡 | 🟡 | 🟡 | ✅ | 🟡 |
 
-<sub>³ A threshold-based risk engine ships (`0063_risk_settings` → step-up/force-MFA by risk level); richer signals (impossible-travel, device reputation) are the follow-up. ⁷ AES-256-GCM vault + a wired, tested AWS KMS provider; only provisioning a live CMK (BYOK rollout) is external ops.</sub>
+<sub>³ A threshold-based risk engine ships (`0063_risk_settings` → step-up/force-MFA by risk level), extended with impossible-travel and device-reputation signals (`0077_adaptive_risk`) — both additive, independently-togglable, and off by default; impossible travel also needs a trusted upstream proxy to supply a country header (external ops, not a code gap — no server-side GeoIP lookup exists or is needed). ⁷ AES-256-GCM vault + a wired, tested AWS KMS provider; only provisioning a live CMK (BYOK rollout) is external ops.</sub>
 
 ### Developer experience & delivery
 | Capability | **Qeet ID** | Auth0/Okta | Clerk | WorkOS | Stytch | Keycloak | FusionAuth | Zitadel | Ory |
@@ -209,7 +207,7 @@ This file is the **single source of truth** for shipped-vs-pending status and th
 
 <sub>² Stripe + Razorpay checkout code complete & webhook-verified; go-live needs env keys.</sub>
 
-**Where Qeet ID wins:** both an OIDC **and** SAML IdP with SCIM Users+Groups (open-source, not paywalled); tamper-evident hash-chained audit with `/verify`; a full agentic-identity stack (AI-agent identities + RFC 8693 delegation + MCP introspection + token vaulting + W3C VCs); ReBAC **and** RBAC both explainable (`?explain=true` on both `/check` endpoints — no other researched platform, including OpenFGA/SpiceDB, ships ReBAC explainability at all); and security-on-by-default (theft detection, lockout, prod boot-gate, bot detection). **Closest peer:** Zitadel. **Remaining gaps vs. the field:** richer adaptive-MFA signals and KMS BYOK go-live (ops).
+**Where Qeet ID wins:** both an OIDC **and** SAML IdP with SCIM Users+Groups (open-source, not paywalled); tamper-evident hash-chained audit with `/verify`; a full agentic-identity stack (AI-agent identities + RFC 8693 delegation + MCP introspection + token vaulting + W3C VCs); ReBAC **and** RBAC both explainable (`?explain=true` on both `/check` endpoints — no other researched platform, including OpenFGA/SpiceDB, ships ReBAC explainability at all); and security-on-by-default (theft detection, lockout, prod boot-gate, bot detection). **Closest peer:** Zitadel. **Remaining gaps vs. the field:** KMS BYOK go-live (ops).
 
 <details><summary>Competitive research sources (2025–2026)</summary>
 

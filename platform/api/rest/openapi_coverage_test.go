@@ -26,9 +26,9 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/developer/credentials/tokenvault"
 	"github.com/qeetgroup/qeet-id/domains/developer/service-accounts"
 	"github.com/qeetgroup/qeet-id/domains/developer/webhooks"
+	"github.com/qeetgroup/qeet-id/domains/federation/adminportal"
 	"github.com/qeetgroup/qeet-id/domains/federation/ldap"
 	"github.com/qeetgroup/qeet-id/domains/federation/oidc"
-	"github.com/qeetgroup/qeet-id/domains/federation/adminportal"
 	"github.com/qeetgroup/qeet-id/domains/federation/saml"
 	"github.com/qeetgroup/qeet-id/domains/federation/scim"
 	"github.com/qeetgroup/qeet-id/domains/federation/social"
@@ -40,13 +40,14 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/identity/verification"
 	"github.com/qeetgroup/qeet-id/domains/operations/analytics"
 	"github.com/qeetgroup/qeet-id/domains/operations/audit"
+	"github.com/qeetgroup/qeet-id/domains/operations/audit/anomaly"
 	"github.com/qeetgroup/qeet-id/domains/operations/billing"
 	"github.com/qeetgroup/qeet-id/domains/operations/compliance"
 	"github.com/qeetgroup/qeet-id/domains/operations/email-templates"
 	"github.com/qeetgroup/qeet-id/domains/operations/retention"
-	"github.com/qeetgroup/qeet-id/platform/observability/health"
 	"github.com/qeetgroup/qeet-id/platform/api/rest/httpx"
 	"github.com/qeetgroup/qeet-id/platform/events/outbox"
+	"github.com/qeetgroup/qeet-id/platform/observability/health"
 )
 
 // testDeps builds a Deps with every handler field non-nil. The Mount* methods
@@ -78,6 +79,7 @@ func testDeps() Deps {
 		Policy:         &policy.Handler{},
 		GDPR:           &gdpr.Handler{},
 		Audit:          &audit.Handler{},
+		AuditAnomaly:   &anomaly.Handler{},
 		Billing:        &billing.Handler{},
 		Analytics:      &analytics.Handler{},
 		Outbox:         &outbox.Handler{},

@@ -60,7 +60,7 @@ Authenticated (valid Bearer JWT or API key)
 - **Tenant isolation:** Every SQL query is scoped by `tenant_id`; cross-tenant access is architecturally impossible without explicit membership
 
 ### Session security
-- **Short access token TTL:** 15 minutes (configurable)
+- **Short access token TTL:** 10 minutes (configurable)
 - **Single-use refresh tokens:** Replay of a used refresh token invalidates the entire session
 - **CSRF:** Double-submit HMAC cookie + origin check for browser-authenticated requests
 

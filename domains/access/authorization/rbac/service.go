@@ -14,9 +14,34 @@ import (
 // and the HTTP handlers thin. Reads stay on the Repository.
 type Service struct {
 	repo *Repository
+	// emitter delivers token.claims_change signals to a tenant's webhook
+	// subscriptions (nil = emission off). Set via SetEmitter.
+	emitter EventEmitter
 }
 
 func NewService(repo *Repository) *Service { return &Service{repo: repo} }
+
+// EventEmitter delivers a webhook-shaped event to a tenant's subscriptions.
+// Satisfied by *webhook.Service.Enqueue; kept as a func type (matching the
+// same pattern used by domains/access/authentication and
+// domains/developer/agents) so rbac doesn't import the webhooks package.
+// Wired via SetEmitter.
+type EventEmitter func(ctx context.Context, tenantID uuid.UUID, eventType string, payload any) error
+
+// SetEmitter wires webhook delivery for token.claims_change signals. Called
+// from cmd/server/main.go.
+func (s *Service) SetEmitter(e EventEmitter) { s.emitter = e }
+
+// emit is a best-effort webhook delivery — a failure here must never fail
+// the role change it's describing, so errors are swallowed silently. (rbac
+// has no logger dependency today; adding one for this alone isn't worth the
+// new import — Enqueue's own dispatcher logs delivery failures.)
+func (s *Service) emit(ctx context.Context, tenantID uuid.UUID, eventType string, payload any) {
+	if s.emitter == nil {
+		return
+	}
+	_ = s.emitter(ctx, tenantID, eventType, payload)
+}
 
 func (s *Service) CreateRole(ctx context.Context, tenantID uuid.UUID, name, desc string, actor audit.Actor) (*Role, error) {
 	tx, err := s.repo.Pool().Begin(ctx)
@@ -87,7 +112,17 @@ func (s *Service) AssignRole(ctx context.Context, userID, tenantID, roleID uuid.
 		map[string]any{"role_id": roleID})); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	// Best-effort, outside the tx: this user's effective permissions just
+	// changed, so any access token they're already holding is now stale —
+	// the CAEP-shaped "token-claims-change" signal a webhook subscriber can
+	// react to instead of waiting for that token's TTL to lapse.
+	s.emit(ctx, tenantID, "token.claims_change", map[string]any{
+		"user_id": userID, "role_id": roleID, "change": "role_assigned",
+	})
+	return nil
 }
 
 func (s *Service) UnassignRole(ctx context.Context, userID, tenantID, roleID uuid.UUID, actor audit.Actor) error {
@@ -104,7 +139,13 @@ func (s *Service) UnassignRole(ctx context.Context, userID, tenantID, roleID uui
 		map[string]any{"role_id": roleID})); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	s.emit(ctx, tenantID, "token.claims_change", map[string]any{
+		"user_id": userID, "role_id": roleID, "change": "role_unassigned",
+	})
+	return nil
 }
 
 // AssignRoleToGroup grants a role to a group; both must belong to tenantID. A

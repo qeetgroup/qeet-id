@@ -42,6 +42,7 @@ import { Route as AppSecurityRateLimitsRouteImport } from './routes/_app/securit
 import { Route as AppSecurityLogStreamingRouteImport } from './routes/_app/security/log-streaming'
 import { Route as AppSecurityDeviceAuthorizationsRouteImport } from './routes/_app/security/device-authorizations'
 import { Route as AppSecurityAuditLogsRouteImport } from './routes/_app/security/audit-logs'
+import { Route as AppSecurityAuditIntelligenceRouteImport } from './routes/_app/security/audit-intelligence'
 import { Route as AppOrganizationsTenantsRouteImport } from './routes/_app/organizations/tenants'
 import { Route as AppOrganizationsMembersRouteImport } from './routes/_app/organizations/members'
 import { Route as AppOrganizationsDomainsRouteImport } from './routes/_app/organizations/domains'
@@ -258,6 +259,12 @@ const AppSecurityAuditLogsRoute = AppSecurityAuditLogsRouteImport.update({
   path: '/security/audit-logs',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSecurityAuditIntelligenceRoute =
+  AppSecurityAuditIntelligenceRouteImport.update({
+    id: '/security/audit-intelligence',
+    path: '/security/audit-intelligence',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppOrganizationsTenantsRoute = AppOrganizationsTenantsRouteImport.update({
   id: '/organizations/tenants',
   path: '/organizations/tenants',
@@ -566,6 +573,7 @@ export interface FileRoutesByFullPath {
   '/organizations/domains': typeof AppOrganizationsDomainsRoute
   '/organizations/members': typeof AppOrganizationsMembersRoute
   '/organizations/tenants': typeof AppOrganizationsTenantsRoute
+  '/security/audit-intelligence': typeof AppSecurityAuditIntelligenceRoute
   '/security/audit-logs': typeof AppSecurityAuditLogsRoute
   '/security/device-authorizations': typeof AppSecurityDeviceAuthorizationsRoute
   '/security/log-streaming': typeof AppSecurityLogStreamingRoute
@@ -650,6 +658,7 @@ export interface FileRoutesByTo {
   '/organizations/domains': typeof AppOrganizationsDomainsRoute
   '/organizations/members': typeof AppOrganizationsMembersRoute
   '/organizations/tenants': typeof AppOrganizationsTenantsRoute
+  '/security/audit-intelligence': typeof AppSecurityAuditIntelligenceRoute
   '/security/audit-logs': typeof AppSecurityAuditLogsRoute
   '/security/device-authorizations': typeof AppSecurityDeviceAuthorizationsRoute
   '/security/log-streaming': typeof AppSecurityLogStreamingRoute
@@ -737,6 +746,7 @@ export interface FileRoutesById {
   '/_app/organizations/domains': typeof AppOrganizationsDomainsRoute
   '/_app/organizations/members': typeof AppOrganizationsMembersRoute
   '/_app/organizations/tenants': typeof AppOrganizationsTenantsRoute
+  '/_app/security/audit-intelligence': typeof AppSecurityAuditIntelligenceRoute
   '/_app/security/audit-logs': typeof AppSecurityAuditLogsRoute
   '/_app/security/device-authorizations': typeof AppSecurityDeviceAuthorizationsRoute
   '/_app/security/log-streaming': typeof AppSecurityLogStreamingRoute
@@ -823,6 +833,7 @@ export interface FileRouteTypes {
     | '/organizations/domains'
     | '/organizations/members'
     | '/organizations/tenants'
+    | '/security/audit-intelligence'
     | '/security/audit-logs'
     | '/security/device-authorizations'
     | '/security/log-streaming'
@@ -907,6 +918,7 @@ export interface FileRouteTypes {
     | '/organizations/domains'
     | '/organizations/members'
     | '/organizations/tenants'
+    | '/security/audit-intelligence'
     | '/security/audit-logs'
     | '/security/device-authorizations'
     | '/security/log-streaming'
@@ -993,6 +1005,7 @@ export interface FileRouteTypes {
     | '/_app/organizations/domains'
     | '/_app/organizations/members'
     | '/_app/organizations/tenants'
+    | '/_app/security/audit-intelligence'
     | '/_app/security/audit-logs'
     | '/_app/security/device-authorizations'
     | '/_app/security/log-streaming'
@@ -1282,6 +1295,13 @@ declare module '@tanstack/react-router' {
       path: '/security/audit-logs'
       fullPath: '/security/audit-logs'
       preLoaderRoute: typeof AppSecurityAuditLogsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/security/audit-intelligence': {
+      id: '/_app/security/audit-intelligence'
+      path: '/security/audit-intelligence'
+      fullPath: '/security/audit-intelligence'
+      preLoaderRoute: typeof AppSecurityAuditIntelligenceRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/organizations/tenants': {
@@ -1716,6 +1736,7 @@ interface AppRouteChildren {
   AppOrganizationsDomainsRoute: typeof AppOrganizationsDomainsRoute
   AppOrganizationsMembersRoute: typeof AppOrganizationsMembersRoute
   AppOrganizationsTenantsRoute: typeof AppOrganizationsTenantsRoute
+  AppSecurityAuditIntelligenceRoute: typeof AppSecurityAuditIntelligenceRoute
   AppSecurityAuditLogsRoute: typeof AppSecurityAuditLogsRoute
   AppSecurityDeviceAuthorizationsRoute: typeof AppSecurityDeviceAuthorizationsRoute
   AppSecurityLogStreamingRoute: typeof AppSecurityLogStreamingRoute
@@ -1786,6 +1807,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppOrganizationsDomainsRoute: AppOrganizationsDomainsRoute,
   AppOrganizationsMembersRoute: AppOrganizationsMembersRoute,
   AppOrganizationsTenantsRoute: AppOrganizationsTenantsRoute,
+  AppSecurityAuditIntelligenceRoute: AppSecurityAuditIntelligenceRoute,
   AppSecurityAuditLogsRoute: AppSecurityAuditLogsRoute,
   AppSecurityDeviceAuthorizationsRoute: AppSecurityDeviceAuthorizationsRoute,
   AppSecurityLogStreamingRoute: AppSecurityLogStreamingRoute,

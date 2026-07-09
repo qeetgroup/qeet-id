@@ -1777,8 +1777,13 @@ paths:
       operationId: get_v1_tenants_ByTenantID_security_risk_settings
       summary: Get risk settings
       description: >-
-        Returns the medium/high risk-score thresholds and the level at which
-        step-up MFA is forced even for a trusted device.
+        Returns the medium/high risk-score thresholds, the level at which
+        step-up MFA is forced even for a trusted device, and the two
+        additive adaptive-MFA signals layered on top: impossible-travel
+        (a login from a new country sooner than min_travel_hours after the
+        last one) and device reputation (a login from a browser+OS
+        combination never seen before for this user). Both are
+        independently toggled and off by default.
       tags:
         - Threats
       parameters:
@@ -1796,15 +1801,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  medium_threshold:
-                    type: number
-                  high_threshold:
-                    type: number
-                  force_mfa_at_level:
-                    type: string
-                    enum: [medium, high]
+                $ref: '#/components/schemas/RiskSettings'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1828,15 +1825,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                medium_threshold:
-                  type: number
-                high_threshold:
-                  type: number
-                force_mfa_at_level:
-                  type: string
-                  enum: [medium, high]
+              $ref: '#/components/schemas/RiskSettings'
       responses:
         '200':
           description: Updated settings
@@ -2772,6 +2761,25 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
   schemas:
+    RiskSettings:
+      type: object
+      properties:
+        medium_threshold:
+          type: number
+        high_threshold:
+          type: number
+        force_mfa_at_level:
+          type: string
+          enum: [medium, high]
+        impossible_travel_enabled:
+          type: boolean
+          description: Off by default. Also needs a geo signal to do anything — see GEO_COUNTRY_HEADER.
+        min_travel_hours:
+          type: number
+          description: A login from a different country than the last one, sooner than this many hours later, is flagged.
+        device_reputation_enabled:
+          type: boolean
+          description: Off by default. Flags a login from a browser+OS combination never seen before for this user.
     Error:
       type: object
       required:

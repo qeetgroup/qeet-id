@@ -18,10 +18,10 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/identity/users"
 	"github.com/qeetgroup/qeet-id/domains/operations/audit"
 	"github.com/qeetgroup/qeet-id/platform/api/rest/errs"
-	"github.com/qeetgroup/qeet-id/platform/security/hibp"
+	"github.com/qeetgroup/qeet-id/platform/database/postgres/pgxerr"
 	"github.com/qeetgroup/qeet-id/platform/events/outbox"
 	"github.com/qeetgroup/qeet-id/platform/security/encryption"
-	"github.com/qeetgroup/qeet-id/platform/database/postgres/pgxerr"
+	"github.com/qeetgroup/qeet-id/platform/security/hibp"
 	"github.com/qeetgroup/qeet-id/platform/security/tokens"
 )
 
@@ -50,10 +50,36 @@ type Service struct {
 	// loginHook is an optional synchronous policy gate run after credentials
 	// verify (nil = no gate). Set via SetLoginHook.
 	loginHook LoginHook
+	// emitter delivers session.revoked signals to a tenant's webhook
+	// subscriptions (nil = emission off). Set via SetEmitter.
+	emitter EventEmitter
 }
 
 func NewService(pool *pgxpool.Pool, users *user.Repository, t *tokens.Issuer) *Service {
 	return &Service{pool: pool, users: users, tokens: t}
+}
+
+// EventEmitter delivers a webhook-shaped event to a tenant's subscriptions.
+// Satisfied by *webhook.Service.Enqueue; kept as a func type (matching the
+// same pattern used by domains/developer/agents) so auth doesn't import the
+// webhooks package. Wired via SetEmitter.
+type EventEmitter func(ctx context.Context, tenantID uuid.UUID, eventType string, payload any) error
+
+// SetEmitter wires webhook delivery for session-revocation signals. Called
+// from cmd/server/main.go.
+func (s *Service) SetEmitter(e EventEmitter) { s.emitter = e }
+
+// emit is a best-effort webhook delivery: a failure here must never fail the
+// revocation it's describing (the session is already dead either way), so
+// errors are logged, not returned. tenantID == uuid.Nil (a tenant-less
+// session) is skipped — there's no tenant to hold a webhook subscription.
+func (s *Service) emit(ctx context.Context, tenantID uuid.UUID, eventType string, payload any) {
+	if s.emitter == nil || tenantID == uuid.Nil {
+		return
+	}
+	if err := s.emitter(ctx, tenantID, eventType, payload); err != nil {
+		slog.Warn("auth: emit webhook event", "event_type", eventType, "err", err)
+	}
 }
 
 // MFAEnroller is the slice of the MFA service the auth package needs to enforce
@@ -121,9 +147,12 @@ func (s *Service) SetDevicePolicy(d DevicePolicy) { s.devicePolicy = d }
 // MFA even on a trusted device. Satisfied by *risk.Service (threat-detection/risk);
 // kept as an interface so auth doesn't import that package. Wired via SetRiskAssessor.
 type RiskAssessor interface {
-	// ShouldForceMFA returns true when the UA's risk score exceeds the tenant's
-	// configured force-MFA threshold. Fails open (false) on any error.
-	ShouldForceMFA(ctx context.Context, tenantID uuid.UUID, ua string) bool
+	// ShouldForceMFA returns true when the request's risk score — bot-likeness,
+	// plus impossible-travel and device-reputation signals when a tenant has
+	// opted into them — exceeds the tenant's configured force-MFA threshold.
+	// country is a best-effort ISO code (empty when unresolved); fails open
+	// (false) on any error.
+	ShouldForceMFA(ctx context.Context, tenantID, userID uuid.UUID, ip, ua, country string) bool
 }
 
 // SetRiskAssessor wires the adaptive-MFA risk override. Called from cmd/server/main.go.
@@ -361,7 +390,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (*LoginResult, error
 // CompleteMFALoginSession). Otherwise it mints the SSO session cookie value.
 // Without this check the cookie flow would bypass MFA that the token flow
 // enforces.
-func (s *Service) BeginLoginSession(ctx context.Context, email, password, ip, ua, trustedToken string) (*LoginSessionResult, error) {
+func (s *Service) BeginLoginSession(ctx context.Context, email, password, ip, ua, trustedToken, country string) (*LoginSessionResult, error) {
 	// Hook-issued claims aren't threaded into the hosted-login cookie flow: the
 	// SSO cookie is opaque, and any JWT is minted later by the OIDC authorize
 	// flow for a specific client, decoupled from this call — a separate,
@@ -375,7 +404,7 @@ func (s *Service) BeginLoginSession(ctx context.Context, email, password, ip, ua
 		if err != nil {
 			return nil, err
 		}
-		if enrolled && !s.deviceTrusted(ctx, u.ID, u.TenantID, trustedToken, ua) {
+		if enrolled && !s.deviceTrusted(ctx, u.ID, u.TenantID, trustedToken, ip, ua, country) {
 			token, err := s.createMFAChallenge(ctx, u.ID, u.TenantID, nil)
 			if err != nil {
 				return nil, err
@@ -395,7 +424,7 @@ func (s *Service) BeginLoginSession(ctx context.Context, email, password, ip, ua
 // live trusted-device token bound to this user AND the risk level is not too
 // high. Any failure or missing piece returns false — the safe default is always
 // to require MFA.
-func (s *Service) deviceTrusted(ctx context.Context, userID, tenantID uuid.UUID, trustedToken, ua string) bool {
+func (s *Service) deviceTrusted(ctx context.Context, userID, tenantID uuid.UUID, trustedToken, ip, ua, country string) bool {
 	if s.devicePolicy == nil || trustedToken == "" {
 		return false
 	}
@@ -403,8 +432,10 @@ func (s *Service) deviceTrusted(ctx context.Context, userID, tenantID uuid.UUID,
 	if err != nil || !enabled {
 		return false
 	}
-	// A high-risk request (e.g. bot-like UA) forces MFA even on a trusted device.
-	if s.riskAssessor != nil && s.riskAssessor.ShouldForceMFA(ctx, tenantID, ua) {
+	// A high-risk request (bot-like UA, impossible travel, or an unrecognized
+	// device — whichever the tenant has opted into) forces MFA even on a
+	// trusted device.
+	if s.riskAssessor != nil && s.riskAssessor.ShouldForceMFA(ctx, tenantID, userID, ip, ua, country) {
 		return false
 	}
 	return s.IsTrustedDevice(ctx, userID, trustedToken)
@@ -751,23 +782,26 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (*TokenPair, err
 	defer tx.Rollback(ctx)
 
 	var (
-		id         uuid.UUID
-		sessionID  uuid.UUID
-		usedAt     *time.Time
-		expiresAt  time.Time
-		sessionRev *time.Time
-		userID     uuid.UUID
-		tenantPtr  *uuid.UUID // NULL for a tenant-less session
+		id          uuid.UUID
+		sessionID   uuid.UUID
+		usedAt      *time.Time
+		expiresAt   time.Time
+		sessionRev  *time.Time
+		userID      uuid.UUID
+		tenantPtr   *uuid.UUID // NULL for a tenant-less session
+		userStatus  string
+		userDeleted *time.Time
 	)
 	row := tx.QueryRow(ctx, `
 		SELECT rt.id, rt.session_id, rt.used_at, rt.expires_at,
-		       s.revoked_at, s.user_id, s.tenant_id
+		       s.revoked_at, s.user_id, s.tenant_id, u.status, u.deleted_at
 		FROM auth.refresh_tokens rt
 		JOIN auth.sessions s ON s.id = rt.session_id
+		JOIN "user".users u ON u.id = s.user_id
 		WHERE rt.token_hash = $1
 		FOR UPDATE OF rt
 	`, hash)
-	if err := row.Scan(&id, &sessionID, &usedAt, &expiresAt, &sessionRev, &userID, &tenantPtr); err != nil {
+	if err := row.Scan(&id, &sessionID, &usedAt, &expiresAt, &sessionRev, &userID, &tenantPtr, &userStatus, &userDeleted); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errs.ErrUnauthorized.WithDetail("unknown refresh token")
 		}
@@ -775,6 +809,14 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (*TokenPair, err
 	}
 	if sessionRev != nil {
 		return nil, errs.ErrUnauthorized.WithDetail("session revoked")
+	}
+	// A session can outlive the account it belongs to: a plain status
+	// change (PATCH /users/{id}) or a soft-delete doesn't touch
+	// auth.sessions at all, so without this check a suspended/deleted
+	// user's still-valid refresh token would keep minting fresh access
+	// tokens indefinitely.
+	if userDeleted != nil || userStatus == "suspended" {
+		return nil, errs.ErrUnauthorized.WithDetail("account suspended or deleted")
 	}
 	if time.Now().After(expiresAt) {
 		return nil, errs.ErrUnauthorized.WithDetail("refresh token expired")
@@ -796,6 +838,15 @@ func (s *Service) Refresh(ctx context.Context, in RefreshInput) (*TokenPair, err
 		if err := tx.Commit(ctx); err != nil {
 			return nil, err
 		}
+		// Best-effort, outside the transaction: the revocation is already
+		// durable at this point, and webhook.Service.Enqueue does its own
+		// pool calls — it can't join the tx above.
+		s.emit(ctx, tenantID, "session.revoked", map[string]any{
+			"user_id":    userID,
+			"session_id": sessionID,
+			"reason":     "reuse_detected",
+			"revoked_at": time.Now().UTC(),
+		})
 		return nil, errs.ErrUnauthorized.WithDetail("refresh token reuse — session revoked")
 	}
 
@@ -915,11 +966,32 @@ func (s *Service) handleRefreshReuse(ctx context.Context, tx pgx.Tx,
 	return nil
 }
 
+// Logout revokes a session (covers both self-service logout and an
+// admin/API-driven revoke of another session — same call, same effect).
+// Idempotent: revoking an already-revoked or nonexistent session is a no-op,
+// not an error.
 func (s *Service) Logout(ctx context.Context, sessionID uuid.UUID) error {
-	_, err := s.pool.Exec(ctx, `
+	var userID uuid.UUID
+	var tenantID *uuid.UUID
+	err := s.pool.QueryRow(ctx, `
 		UPDATE auth.sessions SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL
-	`, sessionID)
-	return err
+		RETURNING user_id, tenant_id
+	`, sessionID).Scan(&userID, &tenantID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if tenantID != nil {
+		s.emit(ctx, *tenantID, "session.revoked", map[string]any{
+			"user_id":    userID,
+			"session_id": sessionID,
+			"reason":     "logout",
+			"revoked_at": time.Now().UTC(),
+		})
+	}
+	return nil
 }
 
 type Session struct {

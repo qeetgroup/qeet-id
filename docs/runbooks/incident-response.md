@@ -68,8 +68,8 @@ POST /v1/users/:id/force-password-reset
 # 2. Deploy with the new JWT_SIGNING_KEY environment variable
 # Both old and new keys serve in JWKS during the grace window
 
-# 3. The old key's tokens expire within 15 minutes (access token TTL)
-# After 15 minutes, remove the old key from the configuration
+# 3. The old key's tokens expire within 10 minutes (access token TTL)
+# After 10 minutes, remove the old key from the configuration
 
 # 4. Force all users to re-authenticate (invalidate all refresh tokens)
 # This requires a migration or admin tool — file an issue if needed
@@ -78,7 +78,7 @@ POST /v1/users/:id/force-password-reset
 GET /v1/audit?action=login.succeeded&from=<start_of_compromise>
 ```
 
-**Important:** A compromised signing key means all existing tokens are untrusted. Move quickly — the 15-minute access token TTL is your window.
+**Important:** A compromised signing key means all existing tokens are untrusted. Move quickly — the 10-minute access token TTL is your window.
 
 ---
 

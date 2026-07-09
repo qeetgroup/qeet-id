@@ -44,6 +44,7 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/identity/verification"
 	"github.com/qeetgroup/qeet-id/domains/operations/analytics"
 	"github.com/qeetgroup/qeet-id/domains/operations/audit"
+	"github.com/qeetgroup/qeet-id/domains/operations/audit/anomaly"
 	"github.com/qeetgroup/qeet-id/domains/operations/billing"
 	"github.com/qeetgroup/qeet-id/domains/operations/compliance"
 	"github.com/qeetgroup/qeet-id/domains/operations/email-templates"
@@ -83,6 +84,7 @@ type Deps struct {
 	Policy        *policy.Handler
 	GDPR          *gdpr.Handler
 	Audit         *audit.Handler
+	AuditAnomaly  *anomaly.Handler
 	Billing       *billing.Handler
 	Analytics     *analytics.Handler
 	Outbox        *outbox.Handler
@@ -272,7 +274,8 @@ func NewRouter(d Deps) http.Handler {
 			d.GDPR.Mount(r)
 			d.Retention.Mount(r) // /tenants/{id}/retention: auto-purge soft-deleted users
 			d.Audit.Mount(r)
-			d.Billing.Mount(r) // /billing/plans + /tenants/{id}/billing/*
+			d.AuditAnomaly.Mount(r) // /tenants/{id}/audit/anomalies: behavioral-baseline anomaly detection
+			d.Billing.Mount(r)      // /billing/plans + /tenants/{id}/billing/*
 			d.Analytics.Mount(r)
 			d.Outbox.Mount(r)
 			d.OIDC.Mount(r)

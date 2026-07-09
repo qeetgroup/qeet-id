@@ -30,10 +30,19 @@ type Config struct {
 	DBMinConns int32  `envconfig:"DB_MIN_CONNS" default:"2"`
 	DBMaxConns int32  `envconfig:"DB_MAX_CONNS" default:"10"`
 
-	JWTSecret       string        `envconfig:"JWT_SECRET" required:"true"`
-	JWTIssuer       string        `envconfig:"JWT_ISSUER" default:"qeet-id"`
-	JWTAudience     string        `envconfig:"JWT_AUDIENCE" default:"qeet-id"`
-	AccessTokenTTL  time.Duration `envconfig:"ACCESS_TOKEN_TTL" default:"15m"`
+	JWTSecret   string `envconfig:"JWT_SECRET" required:"true"`
+	JWTIssuer   string `envconfig:"JWT_ISSUER" default:"qeet-id"`
+	JWTAudience string `envconfig:"JWT_AUDIENCE" default:"qeet-id"`
+	// AccessTokenTTL bounds how long a revoked-but-not-yet-expired access
+	// token stays usable: access tokens are stateless JWTs, verified by
+	// signature alone on every request (no per-request DB revocation check),
+	// so this TTL is the hard ceiling on that exposure window. 10m — down
+	// from 15m — is a modest, low-risk trim; the real mitigation is the
+	// session.revoked/token.claims_change webhook signals (see
+	// domains/access/authentication and domains/access/authorization/rbac)
+	// that let a relying party react immediately instead of waiting out
+	// whatever this is set to.
+	AccessTokenTTL  time.Duration `envconfig:"ACCESS_TOKEN_TTL" default:"10m"`
 	RefreshTokenTTL time.Duration `envconfig:"REFRESH_TOKEN_TTL" default:"720h"`
 
 	// JWTSigningKey is the PEM-encoded EC P-256 private key (PKCS#8 or SEC1)
@@ -88,6 +97,15 @@ type Config struct {
 	// LoginBaseURL is the origin of the hosted login app (qeetid-login) that
 	// the OAuth authorize flow redirects to for sign-in and consent.
 	LoginBaseURL string `envconfig:"LOGIN_BASE_URL" default:"http://localhost:3004"`
+
+	// GeoCountryHeader is the request header a trusted upstream proxy (e.g.
+	// Cloudflare's CF-IPCountry) sets to the client's resolved country, used
+	// as the sole geo signal for impossible-travel risk assessment. Empty
+	// (the default) disables that signal — there is no server-side GeoIP
+	// lookup, by design. Only meaningful when the deployment actually sits
+	// behind a proxy that sets it; an unrecognized header name is
+	// indistinguishable from "unset" (always empty), which is safe (fail-open).
+	GeoCountryHeader string `envconfig:"GEO_COUNTRY_HEADER" default:""`
 
 	// Email (SMTP) — provider-agnostic (Amazon SES, SendGrid, Mailgun, Postmark).
 	// Empty SMTPHost leaves email on the log-only fallback (dev).
