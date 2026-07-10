@@ -118,3 +118,36 @@ export function useRotateClientSecret(id: string) {
     meta: { successMessage: "Client secret rotated" },
   });
 }
+
+/** An OIDC client that picked up a machine grant type (client_credentials /
+ * token-exchange) without going through the agents/service-accounts registry
+ * — i.e. a piece of software that can act without a human, unmanaged. */
+export interface ShadowAICandidate {
+  id: string;
+  client_id: string;
+  name: string;
+  grant_types: string[];
+  live_grants: number;
+  created_at: string;
+}
+
+export function useShadowAICandidates() {
+  const tenantId = useTenantId();
+  return useQuery({
+    queryKey: ["oidc-shadow-ai", tenantId],
+    enabled: !!tenantId,
+    queryFn: () =>
+      api<{ items: ShadowAICandidate[] }>(`/v1/tenants/${tenantId}/oidc/clients/shadow-ai`),
+  });
+}
+
+export function useReviewShadowAIClient() {
+  const tenantId = useTenantId();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api<void>(`/v1/tenants/${tenantId}/oidc/clients/${id}/review`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["oidc-shadow-ai"] }),
+    meta: { successMessage: "Acknowledged" },
+  });
+}

@@ -55,17 +55,17 @@ The `kid` JWT header field is the **RFC 7638 JWK thumbprint** of the signing key
 2. Add it to the active key set in `platform/security/tokens`.
 3. The new key appears in `/jwks.json` alongside the old key.
 4. New tokens are signed with the new key.
-5. Old tokens (signed with the retired key) continue to verify during the **grace window** — the old key stays in JWKS for the duration of the longest-lived access token (15 minutes by default).
+5. Old tokens (signed with the retired key) continue to verify during the **grace window** — the old key stays in JWKS for the duration of the longest-lived access token (10 minutes by default).
 6. After the grace window expires, remove the old key from JWKS.
 
 ## Token types and TTLs
 
 | Token type | Default TTL | Configurable | Notes |
 |---|---|---|---|
-| Access token | 15 minutes | Yes | Short-lived; bearer for API calls |
+| Access token | 10 minutes | Yes | Short-lived; bearer for API calls |
 | Refresh token | 30 days | Yes | Long-lived; single-use on rotation |
 | Agent token | 60s – 1 hour | Per-agent | Re-minted per request cycle |
-| OIDC ID token | 15 minutes | — | Issued by OIDC flow; mirrors access token |
+| OIDC ID token | 10 minutes | — | Issued by OIDC flow; mirrors access token |
 
 TTLs are configurable via environment variables in `platform/config`.
 

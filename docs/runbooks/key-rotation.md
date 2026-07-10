@@ -39,7 +39,7 @@ Deploy. After deployment:
 
 **Step 3: Wait for the grace window**
 
-Minimum grace window = longest access token TTL = 15 minutes (default).
+Minimum grace window = longest access token TTL = 10 minutes (default).
 
 During this time, no valid tokens are invalidated.
 

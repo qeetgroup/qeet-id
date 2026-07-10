@@ -95,6 +95,10 @@ func TestDiscovery_AdvertisesAlgIssuerS256(t *testing.T) {
 	if len(grants) == 0 {
 		t.Error("discovery must advertise grant_types_supported")
 	}
+	actorTypes, _ := disc["actor_types_supported"].([]any)
+	if len(actorTypes) != 3 || actorTypes[2] != "agent" {
+		t.Errorf("actor_types_supported = %v, want [user service agent]", actorTypes)
+	}
 }
 
 func TestContains(t *testing.T) {

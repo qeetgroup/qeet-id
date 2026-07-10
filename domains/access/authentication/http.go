@@ -28,6 +28,13 @@ type Handler struct {
 	CookieSecure bool
 	// Bot, when set, scores login/session attempts for bot-likeness.
 	Bot BotEvaluator
+	// GeoCountryHeader, when set, is the name of a request header a trusted
+	// upstream proxy (e.g. Cloudflare's CF-IPCountry) sets to the client's
+	// resolved country — the sole geo signal impossible-travel risk assessment
+	// consumes. Empty (the default) means no geo signal is available and that
+	// signal never fires; there is no server-side GeoIP lookup, by design (see
+	// domains/access/threat-detection/risk).
+	GeoCountryHeader string
 }
 
 // evalBot runs the bot scorer for an auth attempt when detection is wired. The
@@ -36,6 +43,15 @@ func (h *Handler) evalBot(r *http.Request, email string) {
 	if h.Bot != nil {
 		h.Bot.Evaluate(r.Context(), email, httpx.ClientIP(r), r.UserAgent())
 	}
+}
+
+// geoCountry reads the configured trusted-proxy header, or "" when unset —
+// callers must treat "" as "no signal," never as a risk signal itself.
+func (h *Handler) geoCountry(r *http.Request) string {
+	if h.GeoCountryHeader == "" {
+		return ""
+	}
+	return r.Header.Get(h.GeoCountryHeader)
 }
 
 func (h *Handler) Mount(r chi.Router) {
@@ -219,7 +235,7 @@ func (h *Handler) createSession(w http.ResponseWriter, r *http.Request) {
 	if c, cerr := r.Cookie(TrustedDeviceCookie); cerr == nil {
 		trusted = c.Value
 	}
-	res, err := h.Service.BeginLoginSession(r.Context(), in.Email, in.Password, httpx.ClientIP(r), r.UserAgent(), trusted)
+	res, err := h.Service.BeginLoginSession(r.Context(), in.Email, in.Password, httpx.ClientIP(r), r.UserAgent(), trusted, h.geoCountry(r))
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return

@@ -42,6 +42,7 @@ import { Route as AppSecurityRateLimitsRouteImport } from './routes/_app/securit
 import { Route as AppSecurityLogStreamingRouteImport } from './routes/_app/security/log-streaming'
 import { Route as AppSecurityDeviceAuthorizationsRouteImport } from './routes/_app/security/device-authorizations'
 import { Route as AppSecurityAuditLogsRouteImport } from './routes/_app/security/audit-logs'
+import { Route as AppSecurityAuditIntelligenceRouteImport } from './routes/_app/security/audit-intelligence'
 import { Route as AppOrganizationsTenantsRouteImport } from './routes/_app/organizations/tenants'
 import { Route as AppOrganizationsMembersRouteImport } from './routes/_app/organizations/members'
 import { Route as AppOrganizationsDomainsRouteImport } from './routes/_app/organizations/domains'
@@ -59,6 +60,7 @@ import { Route as AppAccessRelationshipsRouteImport } from './routes/_app/access
 import { Route as AppAccessPoliciesRouteImport } from './routes/_app/access/policies'
 import { Route as AppAccessPermissionsRouteImport } from './routes/_app/access/permissions'
 import { Route as AppAccessCheckRouteImport } from './routes/_app/access/check'
+import { Route as AppAuthConnectionsIndexRouteImport } from './routes/_app/auth/connections/index'
 import { Route as AppSettingsWorkspaceGeneralRouteImport } from './routes/_app/settings/workspace/general'
 import { Route as AppSettingsWorkspaceEmailTemplatesRouteImport } from './routes/_app/settings/workspace/email-templates'
 import { Route as AppSettingsWorkspaceDomainsRouteImport } from './routes/_app/settings/workspace/domains'
@@ -257,6 +259,12 @@ const AppSecurityAuditLogsRoute = AppSecurityAuditLogsRouteImport.update({
   path: '/security/audit-logs',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSecurityAuditIntelligenceRoute =
+  AppSecurityAuditIntelligenceRouteImport.update({
+    id: '/security/audit-intelligence',
+    path: '/security/audit-intelligence',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppOrganizationsTenantsRoute = AppOrganizationsTenantsRouteImport.update({
   id: '/organizations/tenants',
   path: '/organizations/tenants',
@@ -341,6 +349,11 @@ const AppAccessPermissionsRoute = AppAccessPermissionsRouteImport.update({
 const AppAccessCheckRoute = AppAccessCheckRouteImport.update({
   id: '/access/check',
   path: '/access/check',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuthConnectionsIndexRoute = AppAuthConnectionsIndexRouteImport.update({
+  id: '/auth/connections/',
+  path: '/auth/connections/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsWorkspaceGeneralRoute =
@@ -560,6 +573,7 @@ export interface FileRoutesByFullPath {
   '/organizations/domains': typeof AppOrganizationsDomainsRoute
   '/organizations/members': typeof AppOrganizationsMembersRoute
   '/organizations/tenants': typeof AppOrganizationsTenantsRoute
+  '/security/audit-intelligence': typeof AppSecurityAuditIntelligenceRoute
   '/security/audit-logs': typeof AppSecurityAuditLogsRoute
   '/security/device-authorizations': typeof AppSecurityDeviceAuthorizationsRoute
   '/security/log-streaming': typeof AppSecurityLogStreamingRoute
@@ -608,6 +622,7 @@ export interface FileRoutesByFullPath {
   '/settings/workspace/domains': typeof AppSettingsWorkspaceDomainsRoute
   '/settings/workspace/email-templates': typeof AppSettingsWorkspaceEmailTemplatesRoute
   '/settings/workspace/general': typeof AppSettingsWorkspaceGeneralRoute
+  '/auth/connections/': typeof AppAuthConnectionsIndexRoute
   '/auth/connections/oidc/$clientId': typeof AppAuthConnectionsOidcClientIdRoute
 }
 export interface FileRoutesByTo {
@@ -643,6 +658,7 @@ export interface FileRoutesByTo {
   '/organizations/domains': typeof AppOrganizationsDomainsRoute
   '/organizations/members': typeof AppOrganizationsMembersRoute
   '/organizations/tenants': typeof AppOrganizationsTenantsRoute
+  '/security/audit-intelligence': typeof AppSecurityAuditIntelligenceRoute
   '/security/audit-logs': typeof AppSecurityAuditLogsRoute
   '/security/device-authorizations': typeof AppSecurityDeviceAuthorizationsRoute
   '/security/log-streaming': typeof AppSecurityLogStreamingRoute
@@ -691,6 +707,7 @@ export interface FileRoutesByTo {
   '/settings/workspace/domains': typeof AppSettingsWorkspaceDomainsRoute
   '/settings/workspace/email-templates': typeof AppSettingsWorkspaceEmailTemplatesRoute
   '/settings/workspace/general': typeof AppSettingsWorkspaceGeneralRoute
+  '/auth/connections': typeof AppAuthConnectionsIndexRoute
   '/auth/connections/oidc/$clientId': typeof AppAuthConnectionsOidcClientIdRoute
 }
 export interface FileRoutesById {
@@ -729,6 +746,7 @@ export interface FileRoutesById {
   '/_app/organizations/domains': typeof AppOrganizationsDomainsRoute
   '/_app/organizations/members': typeof AppOrganizationsMembersRoute
   '/_app/organizations/tenants': typeof AppOrganizationsTenantsRoute
+  '/_app/security/audit-intelligence': typeof AppSecurityAuditIntelligenceRoute
   '/_app/security/audit-logs': typeof AppSecurityAuditLogsRoute
   '/_app/security/device-authorizations': typeof AppSecurityDeviceAuthorizationsRoute
   '/_app/security/log-streaming': typeof AppSecurityLogStreamingRoute
@@ -777,6 +795,7 @@ export interface FileRoutesById {
   '/_app/settings/workspace/domains': typeof AppSettingsWorkspaceDomainsRoute
   '/_app/settings/workspace/email-templates': typeof AppSettingsWorkspaceEmailTemplatesRoute
   '/_app/settings/workspace/general': typeof AppSettingsWorkspaceGeneralRoute
+  '/_app/auth/connections/': typeof AppAuthConnectionsIndexRoute
   '/_app/auth/connections/oidc/$clientId': typeof AppAuthConnectionsOidcClientIdRoute
 }
 export interface FileRouteTypes {
@@ -814,6 +833,7 @@ export interface FileRouteTypes {
     | '/organizations/domains'
     | '/organizations/members'
     | '/organizations/tenants'
+    | '/security/audit-intelligence'
     | '/security/audit-logs'
     | '/security/device-authorizations'
     | '/security/log-streaming'
@@ -862,6 +882,7 @@ export interface FileRouteTypes {
     | '/settings/workspace/domains'
     | '/settings/workspace/email-templates'
     | '/settings/workspace/general'
+    | '/auth/connections/'
     | '/auth/connections/oidc/$clientId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -897,6 +918,7 @@ export interface FileRouteTypes {
     | '/organizations/domains'
     | '/organizations/members'
     | '/organizations/tenants'
+    | '/security/audit-intelligence'
     | '/security/audit-logs'
     | '/security/device-authorizations'
     | '/security/log-streaming'
@@ -945,6 +967,7 @@ export interface FileRouteTypes {
     | '/settings/workspace/domains'
     | '/settings/workspace/email-templates'
     | '/settings/workspace/general'
+    | '/auth/connections'
     | '/auth/connections/oidc/$clientId'
   id:
     | '__root__'
@@ -982,6 +1005,7 @@ export interface FileRouteTypes {
     | '/_app/organizations/domains'
     | '/_app/organizations/members'
     | '/_app/organizations/tenants'
+    | '/_app/security/audit-intelligence'
     | '/_app/security/audit-logs'
     | '/_app/security/device-authorizations'
     | '/_app/security/log-streaming'
@@ -1030,6 +1054,7 @@ export interface FileRouteTypes {
     | '/_app/settings/workspace/domains'
     | '/_app/settings/workspace/email-templates'
     | '/_app/settings/workspace/general'
+    | '/_app/auth/connections/'
     | '/_app/auth/connections/oidc/$clientId'
   fileRoutesById: FileRoutesById
 }
@@ -1272,6 +1297,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSecurityAuditLogsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/security/audit-intelligence': {
+      id: '/_app/security/audit-intelligence'
+      path: '/security/audit-intelligence'
+      fullPath: '/security/audit-intelligence'
+      preLoaderRoute: typeof AppSecurityAuditIntelligenceRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/organizations/tenants': {
       id: '/_app/organizations/tenants'
       path: '/organizations/tenants'
@@ -1389,6 +1421,13 @@ declare module '@tanstack/react-router' {
       path: '/access/check'
       fullPath: '/access/check'
       preLoaderRoute: typeof AppAccessCheckRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/auth/connections/': {
+      id: '/_app/auth/connections/'
+      path: '/auth/connections'
+      fullPath: '/auth/connections/'
+      preLoaderRoute: typeof AppAuthConnectionsIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings/workspace/general': {
@@ -1697,6 +1736,7 @@ interface AppRouteChildren {
   AppOrganizationsDomainsRoute: typeof AppOrganizationsDomainsRoute
   AppOrganizationsMembersRoute: typeof AppOrganizationsMembersRoute
   AppOrganizationsTenantsRoute: typeof AppOrganizationsTenantsRoute
+  AppSecurityAuditIntelligenceRoute: typeof AppSecurityAuditIntelligenceRoute
   AppSecurityAuditLogsRoute: typeof AppSecurityAuditLogsRoute
   AppSecurityDeviceAuthorizationsRoute: typeof AppSecurityDeviceAuthorizationsRoute
   AppSecurityLogStreamingRoute: typeof AppSecurityLogStreamingRoute
@@ -1741,6 +1781,7 @@ interface AppRouteChildren {
   AppSettingsWorkspaceDomainsRoute: typeof AppSettingsWorkspaceDomainsRoute
   AppSettingsWorkspaceEmailTemplatesRoute: typeof AppSettingsWorkspaceEmailTemplatesRoute
   AppSettingsWorkspaceGeneralRoute: typeof AppSettingsWorkspaceGeneralRoute
+  AppAuthConnectionsIndexRoute: typeof AppAuthConnectionsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -1766,6 +1807,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppOrganizationsDomainsRoute: AppOrganizationsDomainsRoute,
   AppOrganizationsMembersRoute: AppOrganizationsMembersRoute,
   AppOrganizationsTenantsRoute: AppOrganizationsTenantsRoute,
+  AppSecurityAuditIntelligenceRoute: AppSecurityAuditIntelligenceRoute,
   AppSecurityAuditLogsRoute: AppSecurityAuditLogsRoute,
   AppSecurityDeviceAuthorizationsRoute: AppSecurityDeviceAuthorizationsRoute,
   AppSecurityLogStreamingRoute: AppSecurityLogStreamingRoute,
@@ -1811,6 +1853,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsWorkspaceEmailTemplatesRoute:
     AppSettingsWorkspaceEmailTemplatesRoute,
   AppSettingsWorkspaceGeneralRoute: AppSettingsWorkspaceGeneralRoute,
+  AppAuthConnectionsIndexRoute: AppAuthConnectionsIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

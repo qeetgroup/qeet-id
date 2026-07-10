@@ -480,3 +480,40 @@ func (h *Handler) rotateKey(w http.ResponseWriter, r *http.Request) {
 		"warning":         "Save this PEM as JWT_SIGNING_KEY immediately — it will not be shown again.",
 	})
 }
+
+func (h *Handler) shadowAI(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := requirePathTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	out, err := h.Service.ShadowAICandidates(r.Context(), tenantID)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
+func (h *Handler) reviewShadowAI(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := requirePathTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	id, err := pathID(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	p := httpx.PrincipalFromCtx(r.Context())
+	if p == nil || p.UserID == nil {
+		httpx.WriteError(w, r, errs.ErrUnauthorized.WithDetail("review must be attributed to a human"))
+		return
+	}
+	if err := h.Service.ReviewShadowAIClient(r.Context(), tenantID, id, *p.UserID); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

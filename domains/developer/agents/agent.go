@@ -156,8 +156,13 @@ type Agent struct {
 	// Status is the lifecycle state: active | suspended | decommissioned.
 	Status string `json:"status"`
 	// Disabled is retained for back-compat (true when Status != "active").
-	Disabled  bool      `json:"disabled"`
-	CreatedAt time.Time `json:"created_at"`
+	Disabled bool `json:"disabled"`
+	// SponsorUserID is the named human owner accountable for this agent — nil
+	// only for agents created before the sponsor model existed. New agents
+	// require one (see Create). TransferSponsor reassigns it, e.g. when the
+	// sponsor is offboarded.
+	SponsorUserID *uuid.UUID `json:"sponsor_user_id,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
 	// Secret is the plaintext credential, returned only once on create.
 	Secret string `json:"secret,omitempty"`
 }
@@ -184,9 +189,29 @@ func newSecret() (string, error) {
 	return "agt_" + hex.EncodeToString(b), nil
 }
 
-func (s *Service) Create(ctx context.Context, tenantID uuid.UUID, name string, scopes []string, ttl int) (*Agent, error) {
+// sponsorBelongsToTenant reports whether userID is a member of tenantID —
+// the same rbac.user_roles membership check auth.Service.SwitchTenant uses.
+// A sponsor must be an actual accountable member of the tenant, not just any
+// user row that happens to exist.
+func (s *Service) sponsorBelongsToTenant(ctx context.Context, tenantID, userID uuid.UUID) (bool, error) {
+	var ok bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT EXISTS (SELECT 1 FROM rbac.user_roles WHERE user_id = $1 AND tenant_id = $2)
+	`, userID, tenantID).Scan(&ok)
+	return ok, err
+}
+
+func (s *Service) Create(ctx context.Context, tenantID uuid.UUID, name string, scopes []string, ttl int, sponsorUserID uuid.UUID) (*Agent, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, errs.ErrUnprocessable.WithDetail("name is required")
+	}
+	if sponsorUserID == uuid.Nil {
+		return nil, errs.ErrUnprocessable.WithDetail("sponsor_user_id is required — every agent must have a named human owner")
+	}
+	if ok, err := s.sponsorBelongsToTenant(ctx, tenantID, sponsorUserID); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, errs.ErrUnprocessable.WithDetail("sponsor_user_id must be a member of this tenant")
 	}
 	if scopes == nil {
 		scopes = []string{}
@@ -202,10 +227,10 @@ func (s *Service) Create(ctx context.Context, tenantID uuid.UUID, name string, s
 	ttl = clampTTL(ttl)
 	var a Agent
 	err = s.pool.QueryRow(ctx, `
-		INSERT INTO auth.agents (tenant_id, name, secret_hash, scopes, token_ttl_seconds)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, name, scopes, token_ttl_seconds, created_at
-	`, tenantID, name, hash, scopes, ttl).Scan(&a.ID, &a.Name, &a.Scopes, &a.TokenTTLSeconds, &a.CreatedAt)
+		INSERT INTO auth.agents (tenant_id, name, secret_hash, scopes, token_ttl_seconds, sponsor_user_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, name, scopes, token_ttl_seconds, sponsor_user_id, created_at
+	`, tenantID, name, hash, scopes, ttl, sponsorUserID).Scan(&a.ID, &a.Name, &a.Scopes, &a.TokenTTLSeconds, &a.SponsorUserID, &a.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +242,7 @@ func (s *Service) Create(ctx context.Context, tenantID uuid.UUID, name string, s
 func (s *Service) List(ctx context.Context, tenantID uuid.UUID) ([]Agent, error) {
 	// Decommissioned agents are terminal and excluded from listings.
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, scopes, token_ttl_seconds, status, created_at
+		SELECT id, name, scopes, token_ttl_seconds, status, sponsor_user_id, created_at
 		FROM auth.agents WHERE tenant_id = $1 AND status <> 'decommissioned' ORDER BY created_at DESC
 	`, tenantID)
 	if err != nil {
@@ -227,13 +252,69 @@ func (s *Service) List(ctx context.Context, tenantID uuid.UUID) ([]Agent, error)
 	out := make([]Agent, 0)
 	for rows.Next() {
 		var a Agent
-		if err := rows.Scan(&a.ID, &a.Name, &a.Scopes, &a.TokenTTLSeconds, &a.Status, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.Scopes, &a.TokenTTLSeconds, &a.Status, &a.SponsorUserID, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		a.Disabled = a.Status != "active"
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// AgentsSponsoredBy lists a tenant's (non-decommissioned) agents sponsored by
+// userID — what an admin needs to see before offboarding that person, so no
+// agent is left with an owner who no longer has access.
+func (s *Service) AgentsSponsoredBy(ctx context.Context, tenantID, userID uuid.UUID) ([]Agent, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, name, scopes, token_ttl_seconds, status, sponsor_user_id, created_at
+		FROM auth.agents
+		WHERE tenant_id = $1 AND sponsor_user_id = $2 AND status <> 'decommissioned'
+		ORDER BY created_at DESC
+	`, tenantID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Agent, 0)
+	for rows.Next() {
+		var a Agent
+		if err := rows.Scan(&a.ID, &a.Name, &a.Scopes, &a.TokenTTLSeconds, &a.Status, &a.SponsorUserID, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		a.Disabled = a.Status != "active"
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// TransferSponsor reassigns every agent sponsored by fromUserID (within
+// tenantID) to toUserID in one statement — the offboarding operation: run
+// this before removing fromUserID's access so no agent is left with an owner
+// who can no longer be held accountable for it. toUserID must itself be a
+// member of the tenant. Returns the number of agents transferred.
+func (s *Service) TransferSponsor(ctx context.Context, tenantID, fromUserID, toUserID uuid.UUID) (int, error) {
+	if toUserID == uuid.Nil {
+		return 0, errs.ErrUnprocessable.WithDetail("to_user_id is required")
+	}
+	if ok, err := s.sponsorBelongsToTenant(ctx, tenantID, toUserID); err != nil {
+		return 0, err
+	} else if !ok {
+		return 0, errs.ErrUnprocessable.WithDetail("to_user_id must be a member of this tenant")
+	}
+	ct, err := s.pool.Exec(ctx, `
+		UPDATE auth.agents SET sponsor_user_id = $1
+		WHERE tenant_id = $2 AND sponsor_user_id = $3 AND status <> 'decommissioned'
+	`, toUserID, tenantID, fromUserID)
+	if err != nil {
+		return 0, err
+	}
+	n := int(ct.RowsAffected())
+	if n > 0 {
+		s.emit(ctx, tenantID, "agent.sponsor_transferred", map[string]any{
+			"tenant_id": tenantID.String(), "from_user_id": fromUserID.String(), "to_user_id": toUserID.String(), "count": n,
+		})
+	}
+	return n, nil
 }
 
 func (s *Service) Delete(ctx context.Context, id, tenantID uuid.UUID) error {
@@ -360,6 +441,8 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Post("/tenants/{tenantID}/agents/{id}/suspend", h.suspend)
 	r.Post("/tenants/{tenantID}/agents/{id}/resume", h.resume)
 	r.Post("/tenants/{tenantID}/agents/{id}/decommission", h.decommission)
+	r.Get("/tenants/{tenantID}/agents/sponsored-by/{userID}", h.sponsoredBy)
+	r.Post("/tenants/{tenantID}/agents/sponsored-by/{userID}/transfer", h.transferSponsor)
 }
 
 // auditTransition records an audit row for an agent lifecycle change.
@@ -431,20 +514,66 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name            string   `json:"name"`
-		Scopes          []string `json:"scopes"`
-		TokenTTLSeconds int      `json:"token_ttl_seconds"`
+		Name            string    `json:"name"`
+		Scopes          []string  `json:"scopes"`
+		TokenTTLSeconds int       `json:"token_ttl_seconds"`
+		SponsorUserID   uuid.UUID `json:"sponsor_user_id"`
 	}
 	if err := httpx.DecodeJSON(r, &in); err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	a, err := h.Service.Create(r.Context(), tenantID, in.Name, in.Scopes, in.TokenTTLSeconds)
+	a, err := h.Service.Create(r.Context(), tenantID, in.Name, in.Scopes, in.TokenTTLSeconds, in.SponsorUserID)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
 	}
 	httpx.WriteJSON(w, http.StatusCreated, a)
+}
+
+func (h *Handler) sponsoredBy(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := requirePathTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
+	if err != nil {
+		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid userID"))
+		return
+	}
+	out, err := h.Service.AgentsSponsoredBy(r.Context(), tenantID, userID)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
+func (h *Handler) transferSponsor(w http.ResponseWriter, r *http.Request) {
+	tenantID, err := requirePathTenant(r)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	fromUserID, err := uuid.Parse(chi.URLParam(r, "userID"))
+	if err != nil {
+		httpx.WriteError(w, r, errs.ErrBadRequest.WithDetail("invalid userID"))
+		return
+	}
+	var in struct {
+		ToUserID uuid.UUID `json:"to_user_id"`
+	}
+	if err := httpx.DecodeJSON(r, &in); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	n, err := h.Service.TransferSponsor(r.Context(), tenantID, fromUserID, in.ToUserID)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"transferred": n})
 }
 
 func (h *Handler) del(w http.ResponseWriter, r *http.Request) {

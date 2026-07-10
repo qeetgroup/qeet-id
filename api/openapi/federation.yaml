@@ -25,6 +25,8 @@ tags:
     description: Social/OAuth identity-provider login and account linking.
   - name: LDAP
     description: LDAP / Active Directory connection management and bind authentication.
+  - name: Admin Portal
+    description: A unique, time-limited, capability-scoped link a tenant admin can hand to their own IT admin — no Qeet ID account required — to configure the tenant's SAML connection and/or roll its SCIM token directly.
 paths:
   /.well-known/jwks.json:
     get:
@@ -952,6 +954,124 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/oauth/bc-authorize:
+    post:
+      operationId: post_v1_oauth_bc_authorize
+      summary: Backchannel authentication (CIBA, poll mode)
+      description: >-
+        OpenID CIBA §7. Client-authenticated endpoint for a client that
+        already knows who the user is (login_hint, an email scoped to the
+        client's tenant) — no browser redirect. Best-effort notifies the user
+        (in-app), then returns auth_req_id; the client polls
+        /v1/oauth/token-code with grant_type=urn:openid:params:grant-type:ciba
+        while the user approves/denies via GET/POST /v1/oauth/bc-authorize/{pending,decision}.
+      tags:
+        - OIDC
+      security:
+        - clientCredentials: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - client_id
+                - login_hint
+              properties:
+                client_id:
+                  type: string
+                client_secret:
+                  type: string
+                login_hint:
+                  type: string
+                  format: email
+                scope:
+                  type: string
+                binding_message:
+                  type: string
+                  description: Shown to the user in the consent notification (e.g. a transaction reference).
+      responses:
+        '200':
+          description: Backchannel authentication response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auth_req_id:
+                    type: string
+                  expires_in:
+                    type: integer
+                  interval:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/oauth/bc-authorize/pending:
+    get:
+      operationId: get_v1_oauth_bc_authorize_pending
+      summary: List my pending CIBA requests
+      description: The authenticated user's own still-pending, unexpired backchannel authentication requests — an "approve sign-in" view.
+      tags:
+        - OIDC
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/oauth/bc-authorize/decision:
+    post:
+      operationId: post_v1_oauth_bc_authorize_decision
+      summary: Approve or deny a pending CIBA request
+      description: Records the authenticated user's decision on one of their own pending requests (the id from GET .../pending, not the raw auth_req_id).
+      tags:
+        - OIDC
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - id
+                - approve
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                approve:
+                  type: boolean
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/oauth/login-context:
     get:
       operationId: get_v1_oauth_login_context
@@ -1992,6 +2112,74 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/Unprocessable'
+  /v1/tenants/{tenantID}/oidc/clients/shadow-ai:
+    get:
+      operationId: get_v1_tenants_ByTenantID_oidc_clients_shadow_ai
+      summary: List shadow-AI candidates
+      description: >-
+        OIDC clients whose grant_types include a machine grant type
+        (client_credentials or token-exchange) that haven't been explicitly
+        reviewed — the same "unmanaged non-human identity" risk the
+        agents/service-accounts registries exist to close, surfaced for a
+        client that picked up a machine grant type sideways. Ordered by
+        live (active, unexpired, unrevoked) refresh-token count so clients
+        actually in use surface first.
+      tags:
+        - OIDC
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/tenants/{tenantID}/oidc/clients/{id}/review:
+    post:
+      operationId: post_v1_tenants_ByTenantID_oidc_clients_ById_review
+      summary: Acknowledge a shadow-AI candidate
+      description: Marks the client reviewed, attributed to the calling human principal — it drops off the shadow-AI list until/unless its grant_types change again.
+      tags:
+        - OIDC
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '204':
+          description: No Content
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/tenants/{tenantID}/oauth/grants:
     get:
       operationId: get_v1_tenants_ByTenantID_oauth_grants
@@ -2563,6 +2751,404 @@ paths:
           $ref: '#/components/responses/Unprocessable'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+  /v1/tenants/{tenantID}/admin-portal/links:
+    get:
+      operationId: get_v1_tenants_ByTenantID_admin_portal_links
+      summary: List admin portal links
+      tags:
+        - Admin Portal
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Links (metadata only — the raw token is never returned again after generation)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AdminPortalLink'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: post_v1_tenants_ByTenantID_admin_portal_links
+      summary: Generate an admin portal link
+      description: >-
+        Mints a link an external IT admin (no Qeet ID account) can follow to configure this tenant's SAML connection and/or SCIM token, scoped to the given capabilities and expiring after ttl_seconds (clamped 15m-7d, default 24h). The raw token/url is returned exactly once, in this response only.
+      tags:
+        - Admin Portal
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - capabilities
+              properties:
+                capabilities:
+                  type: array
+                  items:
+                    type: string
+                    enum: [saml, scim]
+                ttl_seconds:
+                  type: integer
+      responses:
+        '201':
+          description: Link generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  link:
+                    $ref: '#/components/schemas/AdminPortalLink'
+                  token:
+                    type: string
+                    description: The raw token — shown only here. Not recoverable afterward.
+                  url:
+                    type: string
+                    format: uri
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /v1/tenants/{tenantID}/admin-portal/links/{id}:
+    delete:
+      operationId: delete_v1_tenants_ByTenantID_admin_portal_links_ById
+      summary: Revoke an admin portal link
+      tags:
+        - Admin Portal
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '204':
+          description: Revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/admin-portal/{token}/context:
+    get:
+      operationId: get_v1_admin_portal_ByToken_context
+      summary: Get portal context
+      description: Public, unauthenticated except by the token itself. Returns the tenant name, granted capabilities, expiry, and branding — everything the hosted portal page needs to render before showing the SAML/SCIM forms.
+      tags:
+        - Admin Portal
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Portal context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPortalContext'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/admin-portal/{token}/saml:
+    get:
+      operationId: get_v1_admin_portal_ByToken_saml
+      summary: List connections (portal)
+      description: Requires the link's capabilities to include "saml".
+      tags:
+        - Admin Portal
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Connections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SAMLConnection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: post_v1_admin_portal_ByToken_saml
+      summary: Create connection (portal)
+      description: Requires the link's capabilities to include "saml".
+      tags:
+        - Admin Portal
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SAMLConnectionCreate'
+      responses:
+        '201':
+          description: Connection created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAMLConnection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /v1/admin-portal/{token}/saml/{id}:
+    get:
+      operationId: get_v1_admin_portal_ByToken_saml_ById
+      summary: Get connection (portal)
+      tags:
+        - Admin Portal
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Connection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAMLConnection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: patch_v1_admin_portal_ByToken_saml_ById
+      summary: Update connection (portal)
+      tags:
+        - Admin Portal
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SAMLConnectionCreate'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SAMLConnection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+    delete:
+      operationId: delete_v1_admin_portal_ByToken_saml_ById
+      summary: Delete connection (portal)
+      tags:
+        - Admin Portal
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/admin-portal/{token}/saml/{id}/test:
+    post:
+      operationId: post_v1_admin_portal_ByToken_saml_ById_test
+      summary: Test connection (portal)
+      description: Same offline preflight as the admin endpoint — no network I/O.
+      tags:
+        - Admin Portal
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Per-check preflight results
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/admin-portal/{token}/scim:
+    get:
+      operationId: get_v1_admin_portal_ByToken_scim
+      summary: Get SCIM config (portal)
+      description: Requires the link's capabilities to include "scim". Never exposes the provisioned-users list — only rotate/revoke/status.
+      tags:
+        - Admin Portal
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: SCIM config
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/admin-portal/{token}/scim/token:
+    post:
+      operationId: post_v1_admin_portal_ByToken_scim_token
+      summary: Rotate SCIM token (portal)
+      description: Returns the full plaintext token exactly once, alongside the updated config view.
+      tags:
+        - Admin Portal
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: '{ token: string, config: object }'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      operationId: delete_v1_admin_portal_ByToken_scim_token
+      summary: Revoke SCIM token (portal)
+      tags:
+        - Admin Portal
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /v1/tenants/{tenantID}/service-principals:
     get:
       operationId: get_v1_tenants_ByTenantID_service_principals
@@ -2966,6 +3552,7 @@ components:
             - authorization_code
             - refresh_token
             - urn:ietf:params:oauth:grant-type:device_code
+            - urn:ietf:params:oauth:grant-type:token-exchange
         code:
           type: string
         redirect_uri:
@@ -2978,6 +3565,25 @@ components:
         device_code:
           type: string
           description: Present when grant_type is the RFC 8628 device_code grant.
+        resource:
+          type: string
+          format: uri
+          description: RFC 8707 resource indicator. Grant-agnostic — accepted on authorization_code, refresh_token, and token-exchange — and binds the issued access token's audience to this resource (e.g. an MCP server) in addition to the platform's own audience. On refresh_token, omitting it preserves the resource bound at the original grant; supplying it switches the bound resource.
+        subject_token:
+          type: string
+          description: RFC 8693 token-exchange grant only — the token identifying the party whose authority is being exercised.
+        subject_token_type:
+          type: string
+          description: RFC 8693 token-exchange grant only. Only "urn:ietf:params:oauth:token-type:access_token" is supported.
+        actor_token:
+          type: string
+          description: RFC 8693 token-exchange grant only (optional) — names the delegate acting on the subject's behalf (e.g. an AI agent); the issued token carries an "act" claim.
+        actor_token_type:
+          type: string
+        requested_token_type:
+          type: string
+        scope:
+          type: string
         client_id:
           type: string
         client_secret:
@@ -3154,6 +3760,60 @@ components:
           type: string
         certificate:
           type: string
+    AdminPortalLink:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum: [saml, scim]
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    AdminPortalContext:
+      type: object
+      properties:
+        tenant_name:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum: [saml, scim]
+        expires_at:
+          type: string
+          format: date-time
+        branding:
+          type: object
+          properties:
+            logo_url:
+              type: string
+            primary_color:
+              type: string
+            secondary_color:
+              type: string
     SCIMUser:
       type: object
       required:

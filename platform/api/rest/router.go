@@ -10,6 +10,7 @@ import (
 
 	"github.com/qeetgroup/qeet-id/domains/access/authentication"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/authpolicy"
+	"github.com/qeetgroup/qeet-id/domains/access/authorization/authzen"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/policy"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/rbac"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/rebac"
@@ -24,9 +25,11 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/developer/api-keys"
 	"github.com/qeetgroup/qeet-id/domains/developer/auth-hooks"
 	"github.com/qeetgroup/qeet-id/domains/developer/credentials/secrets"
+	"github.com/qeetgroup/qeet-id/domains/developer/credentials/tokenvault"
 	"github.com/qeetgroup/qeet-id/domains/developer/credentials/vc"
 	"github.com/qeetgroup/qeet-id/domains/developer/service-accounts"
 	"github.com/qeetgroup/qeet-id/domains/developer/webhooks"
+	"github.com/qeetgroup/qeet-id/domains/federation/adminportal"
 	"github.com/qeetgroup/qeet-id/domains/federation/ldap"
 	"github.com/qeetgroup/qeet-id/domains/federation/oidc"
 	"github.com/qeetgroup/qeet-id/domains/federation/saml"
@@ -41,18 +44,19 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/identity/verification"
 	"github.com/qeetgroup/qeet-id/domains/operations/analytics"
 	"github.com/qeetgroup/qeet-id/domains/operations/audit"
+	"github.com/qeetgroup/qeet-id/domains/operations/audit/anomaly"
 	"github.com/qeetgroup/qeet-id/domains/operations/billing"
 	"github.com/qeetgroup/qeet-id/domains/operations/compliance"
 	"github.com/qeetgroup/qeet-id/domains/operations/email-templates"
-	"github.com/qeetgroup/qeet-id/domains/operations/ratelimits"
 	"github.com/qeetgroup/qeet-id/domains/operations/notifications"
+	"github.com/qeetgroup/qeet-id/domains/operations/ratelimits"
 	"github.com/qeetgroup/qeet-id/domains/operations/retention"
 	"github.com/qeetgroup/qeet-id/domains/operations/siem"
-	"github.com/qeetgroup/qeet-id/platform/observability/health"
 	"github.com/qeetgroup/qeet-id/platform/api/rest/httpx"
-	"github.com/qeetgroup/qeet-id/platform/observability/metrics"
-	"github.com/qeetgroup/qeet-id/platform/events/outbox"
 	"github.com/qeetgroup/qeet-id/platform/cache/ratelimit"
+	"github.com/qeetgroup/qeet-id/platform/events/outbox"
+	"github.com/qeetgroup/qeet-id/platform/observability/health"
+	"github.com/qeetgroup/qeet-id/platform/observability/metrics"
 	"github.com/qeetgroup/qeet-id/platform/observability/tracing"
 )
 
@@ -80,6 +84,7 @@ type Deps struct {
 	Policy        *policy.Handler
 	GDPR          *gdpr.Handler
 	Audit         *audit.Handler
+	AuditAnomaly  *anomaly.Handler
 	Billing       *billing.Handler
 	Analytics     *analytics.Handler
 	Outbox        *outbox.Handler
@@ -89,7 +94,9 @@ type Deps struct {
 	Group         *group.Handler
 	SCIM          *scim.Handler
 	Secret        *secret.Handler
+	TokenVault    *tokenvault.Handler
 	SAML          *saml.Handler
+	AdminPortal   *adminportal.Handler
 	LDAP          *ldap.Handler
 	IPAllow       *ipallow.Handler
 	Threat        *threat.Handler
@@ -101,6 +108,7 @@ type Deps struct {
 	SIEM          *siem.Handler
 	AuthHook      *authhook.Handler
 	ReBAC         *rebac.Handler
+	AuthZEN       *authzen.Handler
 	Agent         *agent.Handler
 	VC            *vc.Handler
 	Health        *health.Handler
@@ -170,13 +178,14 @@ func NewRouter(d Deps) http.Handler {
 			//     NOT exempt — it stays CSRF-protected.
 			ExemptPaths: []string{
 				"/saml/acs/", "/saml/idp/sso", "/oauth/revoke", "/oauth/introspect",
-				"/v1/oauth/token-code", "/v1/oauth/device_authorization",
+				"/v1/oauth/token-code", "/v1/oauth/device_authorization", "/v1/oauth/bc-authorize",
 				"/v1/auth/signup", "/v1/auth/login", "/v1/auth/refresh",
 				"/v1/auth/forgot-password", "/v1/auth/reset-password", "/v1/auth/magic-link/",
 				"/v1/passkeys/login/", "/v1/social/", "/v1/invites/accept",
 				"/v1/billing/webhooks/",  // provider-signed (Stripe/Razorpay), no cookie session
 				"/v1/agents/token",       // agent-credential auth (no cookie session)
 				"/v1/credentials/verify", // public JWT-VC verification (no cookie session)
+				"/v1/admin-portal/",      // token-in-path auth (no cookie session) — see adminportal
 			},
 		}))
 	}
@@ -222,16 +231,18 @@ func NewRouter(d Deps) http.Handler {
 		// Public (no JWT required).
 		r.Group(func(r chi.Router) {
 			r.Use(loginLimiter.Middleware)
-			d.Auth.Mount(r)            // /auth/login, /auth/refresh
-			d.Recovery.Mount(r)        // forgot password, magic links
-			d.Invite.MountPublic(r)    // accept-invite
-			d.Principal.MountPublic(r) // /oauth/token (client_credentials)
-			d.Social.MountPublic(r)    // social OAuth start/callback/exchange
-			d.Billing.MountPublic(r)   // /billing/webhooks/{provider}: Stripe/Razorpay (signature-verified)
-			d.Agent.MountPublic(r)     // /agents/token: AI-agent credential → ephemeral scoped token
-			d.VC.MountPublic(r)        // /credentials/verify: verify a presented JWT-VC (any relying party)
-			d.Passkey.MountPublic(r)   // passwordless passkey login
-			d.OIDC.MountBrowser(r)     // /oauth/authorize (SSO cookie) + decision + token-code
+			d.Auth.Mount(r)              // /auth/login, /auth/refresh
+			d.Recovery.Mount(r)          // forgot password, magic links
+			d.Invite.MountPublic(r)      // accept-invite
+			d.Principal.MountPublic(r)   // /oauth/token (client_credentials)
+			d.Social.MountPublic(r)      // social OAuth start/callback/exchange
+			d.Billing.MountPublic(r)     // /billing/webhooks/{provider}: Stripe/Razorpay (signature-verified)
+			d.Agent.MountPublic(r)       // /agents/token: AI-agent credential → ephemeral scoped token
+			d.VC.MountPublic(r)          // /credentials/verify: verify a presented JWT-VC (any relying party)
+			d.Passkey.MountPublic(r)     // passwordless passkey login
+			d.AdminPortal.MountPublic(r) // /admin-portal/{token}/...: token-gated SAML/SCIM self-serve config
+			d.OIDC.MountBrowser(r)       // /oauth/authorize (SSO cookie) + decision + token-code
+			d.TokenVault.MountPublic(r)  // /vault/tokens/callback: 3rd-party OAuth2 redirect target
 		})
 
 		// Authenticated. Accepts either user JWT, service JWT, or API key.
@@ -263,7 +274,8 @@ func NewRouter(d Deps) http.Handler {
 			d.GDPR.Mount(r)
 			d.Retention.Mount(r) // /tenants/{id}/retention: auto-purge soft-deleted users
 			d.Audit.Mount(r)
-			d.Billing.Mount(r) // /billing/plans + /tenants/{id}/billing/*
+			d.AuditAnomaly.Mount(r) // /tenants/{id}/audit/anomalies: behavioral-baseline anomaly detection
+			d.Billing.Mount(r)      // /billing/plans + /tenants/{id}/billing/*
 			d.Analytics.Mount(r)
 			d.Outbox.Mount(r)
 			d.OIDC.Mount(r)
@@ -272,7 +284,9 @@ func NewRouter(d Deps) http.Handler {
 			d.Group.Mount(r)
 			d.SCIM.Mount(r)         // /tenants/{id}/scim admin: token rotate/revoke/status
 			d.Secret.Mount(r)       // /tenants/{id}/secrets: encrypted secrets vault
+			d.TokenVault.Mount(r)   // /vault/tokens: 3rd-party OAuth token vault (connect/refresh/disconnect)
 			d.SAML.Mount(r)         // /tenants/{id}/saml admin: connection CRUD
+			d.AdminPortal.Mount(r)  // /tenants/{id}/admin-portal/links: self-serve SSO/SCIM link generate/list/revoke
 			d.LDAP.Mount(r)         // /tenants/{id}/ldap admin: connection CRUD + test bind
 			d.IPAllow.Mount(r)      // /tenants/{id}/ip-rules: allow/deny CIDR rules + check
 			d.Threat.Mount(r)       // /tenants/{id}/security/anomalies: detected security events
@@ -284,6 +298,7 @@ func NewRouter(d Deps) http.Handler {
 			d.SIEM.Mount(r)         // /tenants/{id}/log-sinks: SIEM / log streaming
 			d.AuthHook.Mount(r)     // /tenants/{id}/auth-hooks: synchronous login Actions/Hooks
 			d.ReBAC.Mount(r)        // /tenants/{id}/relation-tuples: fine-grained (ReBAC) authz
+			d.AuthZEN.Mount(r)      // /tenants/{id}/access/v1/evaluation: OpenID AuthZEN PDP facade over RBAC/ReBAC
 			d.Agent.Mount(r)        // /tenants/{id}/agents: AI-agent identity admin
 			d.VC.Mount(r)           // /tenants/{id}/credentials: verifiable credential issuance
 		})

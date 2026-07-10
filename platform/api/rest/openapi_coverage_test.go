@@ -14,6 +14,7 @@ import (
 
 	"github.com/qeetgroup/qeet-id/domains/access/authentication"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/authpolicy"
+	"github.com/qeetgroup/qeet-id/domains/access/authorization/authzen"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/policy"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/rbac"
 	"github.com/qeetgroup/qeet-id/domains/access/mfa"
@@ -22,8 +23,10 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/access/risk/ipallow"
 	"github.com/qeetgroup/qeet-id/domains/developer/api-keys"
 	"github.com/qeetgroup/qeet-id/domains/developer/credentials/secrets"
+	"github.com/qeetgroup/qeet-id/domains/developer/credentials/tokenvault"
 	"github.com/qeetgroup/qeet-id/domains/developer/service-accounts"
 	"github.com/qeetgroup/qeet-id/domains/developer/webhooks"
+	"github.com/qeetgroup/qeet-id/domains/federation/adminportal"
 	"github.com/qeetgroup/qeet-id/domains/federation/ldap"
 	"github.com/qeetgroup/qeet-id/domains/federation/oidc"
 	"github.com/qeetgroup/qeet-id/domains/federation/saml"
@@ -37,13 +40,14 @@ import (
 	"github.com/qeetgroup/qeet-id/domains/identity/verification"
 	"github.com/qeetgroup/qeet-id/domains/operations/analytics"
 	"github.com/qeetgroup/qeet-id/domains/operations/audit"
+	"github.com/qeetgroup/qeet-id/domains/operations/audit/anomaly"
 	"github.com/qeetgroup/qeet-id/domains/operations/billing"
 	"github.com/qeetgroup/qeet-id/domains/operations/compliance"
 	"github.com/qeetgroup/qeet-id/domains/operations/email-templates"
 	"github.com/qeetgroup/qeet-id/domains/operations/retention"
-	"github.com/qeetgroup/qeet-id/platform/observability/health"
 	"github.com/qeetgroup/qeet-id/platform/api/rest/httpx"
 	"github.com/qeetgroup/qeet-id/platform/events/outbox"
+	"github.com/qeetgroup/qeet-id/platform/observability/health"
 )
 
 // testDeps builds a Deps with every handler field non-nil. The Mount* methods
@@ -75,6 +79,7 @@ func testDeps() Deps {
 		Policy:         &policy.Handler{},
 		GDPR:           &gdpr.Handler{},
 		Audit:          &audit.Handler{},
+		AuditAnomaly:   &anomaly.Handler{},
 		Billing:        &billing.Handler{},
 		Analytics:      &analytics.Handler{},
 		Outbox:         &outbox.Handler{},
@@ -84,7 +89,10 @@ func testDeps() Deps {
 		Group:          &group.Handler{},
 		SCIM:           &scim.Handler{},
 		Secret:         &secret.Handler{},
+		TokenVault:     &tokenvault.Handler{},
+		AuthZEN:        &authzen.Handler{},
 		SAML:           &saml.Handler{IdP: &saml.IdP{}},
+		AdminPortal:    &adminportal.Handler{},
 		LDAP:           &ldap.Handler{},
 		IPAllow:        &ipallow.Handler{},
 		Health:         &health.Handler{},

@@ -1,6 +1,7 @@
 import {
   ActivityIcon,
   BotIcon,
+  BrainCircuitIcon,
   Building2Icon,
   ChartColumnIcon,
   CreditCardIcon,
@@ -155,6 +156,7 @@ export const navGroups: NavGroup[] = [
         items: [
           { title: "Bot Detection", url: "/security/threats/bots" },
           { title: "Anomalies", url: "/security/threats/anomalies" },
+          { title: "Risk Settings", url: "/security/threats/risk-settings" },
           { title: "Rate Limits", url: "/security/threats/rate-limits" },
           { title: "IP Allowlist", url: "/security/threats/ip-allowlist" },
         ],
@@ -166,6 +168,7 @@ export const navGroups: NavGroup[] = [
       },
       { title: "Rate Limit Policies", url: "/security/rate-limits", icon: <GaugeIcon /> },
       { title: "Audit Logs", url: "/security/audit-logs", icon: <ScrollTextIcon /> },
+      { title: "Audit Intelligence", url: "/security/audit-intelligence", icon: <BrainCircuitIcon /> },
       { title: "Log Streaming", url: "/security/log-streaming", icon: <RadioTowerIcon /> },
       {
         title: "Compliance",
@@ -185,7 +188,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { title: "Webhooks", url: "/developer/webhooks", icon: <WebhookIcon /> },
       { title: "Auth Hooks", url: "/developer/auth-hooks", icon: <ZapIcon /> },
-      { title: "AI Agents", url: "/developer/agents", icon: <SparklesIcon /> },
+      { title: "Agent Governance", url: "/developer/agents", icon: <SparklesIcon /> },
       { title: "Verifiable Credentials", url: "/developer/credentials", icon: <BadgeCheckIcon /> },
       { title: "Bots & Automations", url: "/developer/bots", icon: <BotIcon /> },
       { title: "Infrastructure", url: "/developer/infrastructure", icon: <ServerCogIcon /> },

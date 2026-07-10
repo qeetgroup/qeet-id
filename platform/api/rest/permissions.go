@@ -49,6 +49,13 @@ func permissionMap() map[string]string {
 		"GET /v1/users/{userID}/tenants/{tenantID}/permissions":       "role.read",
 		"GET /v1/check": "role.read",
 		"GET /v1/tenants/{tenantID}/groups/{groupID}/roles":             "role.read",
+
+		// ReBAC: relationship tuples + identity graph.
+		// Reads are gated on role.read (structural authz data). Writes/deletes
+		// and the /check endpoint are ungated beyond tenant scope (they gate
+		// themselves via requirePathTenant + the relation-tuple payload).
+		"GET /v1/tenants/{tenantID}/relation-tuples":       "role.read",
+		"GET /v1/tenants/{tenantID}/relation-tuples/graph": "role.read",
 		"POST /v1/tenants/{tenantID}/groups/{groupID}/roles/{roleID}":   "role.write",
 		"DELETE /v1/tenants/{tenantID}/groups/{groupID}/roles/{roleID}": "role.write",
 
@@ -83,28 +90,31 @@ func permissionMap() map[string]string {
 		"DELETE /v1/tenants/{tenantID}/oauth/devices/{id}":            "connection.write",
 
 		// SSO connections: SAML / SCIM / LDAP / social provider config.
-		"GET /v1/tenants/{tenantID}/saml":                   "connection.read",
-		"POST /v1/tenants/{tenantID}/saml":                  "connection.write",
-		"GET /v1/tenants/{tenantID}/saml/{id}":              "connection.read",
-		"PATCH /v1/tenants/{tenantID}/saml/{id}":            "connection.write",
-		"DELETE /v1/tenants/{tenantID}/saml/{id}":           "connection.write",
-		"GET /v1/tenants/{tenantID}/saml-providers":         "connection.read",
-		"POST /v1/tenants/{tenantID}/saml-providers":        "connection.write",
-		"GET /v1/tenants/{tenantID}/saml-providers/{id}":    "connection.read",
-		"PATCH /v1/tenants/{tenantID}/saml-providers/{id}":  "connection.write",
-		"DELETE /v1/tenants/{tenantID}/saml-providers/{id}": "connection.write",
-		"GET /v1/tenants/{tenantID}/scim":                   "connection.read",
-		"POST /v1/tenants/{tenantID}/scim/token":            "connection.write",
-		"DELETE /v1/tenants/{tenantID}/scim/token":          "connection.write",
-		"GET /v1/tenants/{tenantID}/scim/users":             "connection.read",
-		"GET /v1/tenants/{tenantID}/ldap":                   "connection.read",
-		"POST /v1/tenants/{tenantID}/ldap":                  "connection.write",
-		"GET /v1/tenants/{tenantID}/ldap/{id}":              "connection.read",
-		"PATCH /v1/tenants/{tenantID}/ldap/{id}":            "connection.write",
-		"DELETE /v1/tenants/{tenantID}/ldap/{id}":           "connection.write",
-		"POST /v1/tenants/{tenantID}/ldap/{id}/test":        "connection.write",
-		"GET /v1/tenants/{tenantID}/social/providers":       "connection.read",
-		"POST /v1/tenants/{tenantID}/social/providers":      "connection.write",
+		"GET /v1/tenants/{tenantID}/saml":                       "connection.read",
+		"POST /v1/tenants/{tenantID}/saml":                      "connection.write",
+		"GET /v1/tenants/{tenantID}/saml/{id}":                  "connection.read",
+		"PATCH /v1/tenants/{tenantID}/saml/{id}":                "connection.write",
+		"DELETE /v1/tenants/{tenantID}/saml/{id}":               "connection.write",
+		"GET /v1/tenants/{tenantID}/saml-providers":             "connection.read",
+		"POST /v1/tenants/{tenantID}/saml-providers":            "connection.write",
+		"GET /v1/tenants/{tenantID}/saml-providers/{id}":        "connection.read",
+		"PATCH /v1/tenants/{tenantID}/saml-providers/{id}":      "connection.write",
+		"DELETE /v1/tenants/{tenantID}/saml-providers/{id}":     "connection.write",
+		"GET /v1/tenants/{tenantID}/scim":                       "connection.read",
+		"POST /v1/tenants/{tenantID}/scim/token":                "connection.write",
+		"DELETE /v1/tenants/{tenantID}/scim/token":              "connection.write",
+		"GET /v1/tenants/{tenantID}/scim/users":                 "connection.read",
+		"POST /v1/tenants/{tenantID}/admin-portal/links":        "connection.write",
+		"GET /v1/tenants/{tenantID}/admin-portal/links":         "connection.read",
+		"DELETE /v1/tenants/{tenantID}/admin-portal/links/{id}": "connection.write",
+		"GET /v1/tenants/{tenantID}/ldap":                       "connection.read",
+		"POST /v1/tenants/{tenantID}/ldap":                      "connection.write",
+		"GET /v1/tenants/{tenantID}/ldap/{id}":                  "connection.read",
+		"PATCH /v1/tenants/{tenantID}/ldap/{id}":                "connection.write",
+		"DELETE /v1/tenants/{tenantID}/ldap/{id}":               "connection.write",
+		"POST /v1/tenants/{tenantID}/ldap/{id}/test":            "connection.write",
+		"GET /v1/tenants/{tenantID}/social/providers":           "connection.read",
+		"POST /v1/tenants/{tenantID}/social/providers":          "connection.write",
 
 		// Webhooks.
 		"GET /v1/tenants/{tenantID}/webhooks": "webhook.read",
@@ -149,6 +159,13 @@ func permissionMap() map[string]string {
 		"GET /v1/tenants/{tenantID}/audit":        "audit.read",
 		"GET /v1/tenants/{tenantID}/audit/verify": "audit.read",
 		"GET /v1/admin/outbox/dlq":                "audit.read",
+
+		// Audit intelligence: behavioral-baseline anomaly detection over audit.events.
+		"GET /v1/tenants/{tenantID}/audit/anomalies":               "audit.read",
+		"GET /v1/tenants/{tenantID}/audit/anomalies/summary":       "audit.read",
+		"POST /v1/tenants/{tenantID}/audit/anomalies/{id}/resolve": "audit.write",
+		"GET /v1/tenants/{tenantID}/audit/anomaly-settings":        "audit.read",
+		"PUT /v1/tenants/{tenantID}/audit/anomaly-settings":        "audit.write",
 
 		// Billing (GET /v1/billing/plans is a public catalog — ungated).
 		"GET /v1/tenants/{tenantID}/billing/subscription":         "billing.read",

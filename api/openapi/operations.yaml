@@ -420,13 +420,47 @@ paths:
           required: true
           schema:
             type: string
+        - name: q
+          in: query
+          required: false
+          description: >
+            Free-text search over action, resource_type, actor_type, user_agent,
+            and metadata. Evaluated as a PostgreSQL websearch_to_tsquery expression —
+            supports quoted phrases ("failed login"), exclusions (-saml), and OR.
+          schema:
+            type: string
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: resource_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: actor_user_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: cursor
+          in: query
+          required: false
+          description: The id of the last-seen event, for keyset pagination.
+          schema:
+            type: string
       security:
         - bearerAuth: []
         - apiKeyAuth: []
-      description: Response body summarized; accurate path/method/params/security. Enrich the body later.
       responses:
         '200':
-          description: OK
+          description: '{ items: AuditEvent[], next_cursor: string }'
           content:
             application/json:
               schema:
@@ -436,16 +470,13 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/Unprocessable'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
   /v1/tenants/{tenantID}/audit/verify:
     get:
       operationId: get_v1_tenants_ByTenantID_audit_verify
       summary: Verify audit chain
+      description: Walks the tenant's hash chain from the seed and recomputes each row's hash, returning the first broken link (if any). No side effects.
       tags:
         - Audit
       parameters:
@@ -457,10 +488,9 @@ paths:
       security:
         - bearerAuth: []
         - apiKeyAuth: []
-      description: Response body summarized; accurate path/method/params/security. Enrich the body later.
       responses:
         '200':
-          description: OK
+          description: '{ ok: bool, rows_checked: int, last_verified_id?: uuid, broken_at_id?: uuid, broken_reason?: string }'
           content:
             application/json:
               schema:
@@ -470,12 +500,164 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /v1/tenants/{tenantID}/audit/anomalies:
+    get:
+      operationId: get_v1_tenants_ByTenantID_audit_anomalies
+      summary: List audit anomalies
+      description: Flagged deviations from a behavioral baseline built per (tenant, actor) over audit.events — a first-time action type, an unusual hour, or a new IP. Scored by a background sweep, not synchronously on write.
+      tags:
+        - Audit
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, resolved]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Anomalies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditAnomaly'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/tenants/{tenantID}/audit/anomalies/summary:
+    get:
+      operationId: get_v1_tenants_ByTenantID_audit_anomalies_summary
+      summary: Audit anomaly summary
+      tags:
+        - Audit
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: '{ open: int, resolved_7d: int, high_score_open: int }'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/tenants/{tenantID}/audit/anomalies/{id}/resolve:
+    post:
+      operationId: post_v1_tenants_ByTenantID_audit_anomalies_ById_resolve
+      summary: Resolve an audit anomaly
+      tags:
+        - Audit
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '204':
+          description: Resolved
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/tenants/{tenantID}/audit/anomaly-settings:
+    get:
+      operationId: get_v1_tenants_ByTenantID_audit_anomaly_settings
+      summary: Get anomaly-detection settings
+      tags:
+        - Audit
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditAnomalySettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    put:
+      operationId: put_v1_tenants_ByTenantID_audit_anomaly_settings
+      summary: Update anomaly-detection settings
+      tags:
+        - Audit
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuditAnomalySettings'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditAnomalySettings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '422':
           $ref: '#/components/responses/Unprocessable'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
   /v1/tenants/{tenantID}/billing/invoices:
     get:
       operationId: get_v1_tenants_ByTenantID_billing_invoices
@@ -842,6 +1024,115 @@ paths:
         - bearerAuth: []
         - apiKeyAuth: []
       description: Response body summarized; accurate path/method/params/security. Enrich the body later.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /v1/gdpr/export:
+    post:
+      operationId: post_v1_gdpr_export
+      summary: Request a GDPR data export
+      tags:
+        - GDPR
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+        description: Request body summarized; see the handler for exact fields.
+      description: Queues an async export job; poll GET .../gdpr/export/{id} for status and payload.
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /v1/tenants/{tenantID}/gdpr/export:
+    get:
+      operationId: get_v1_tenants_ByTenantID_gdpr_export
+      summary: List GDPR export requests
+      tags:
+        - GDPR
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      description: Response body summarized; accurate path/method/params/security. Enrich the body later.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /v1/tenants/{tenantID}/gdpr/export/{id}:
+    get:
+      operationId: get_v1_tenants_ByTenantID_gdpr_export_ById
+      summary: Get a GDPR export request (payload once ready)
+      tags:
+        - GDPR
+      parameters:
+        - name: tenantID
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      description: Returns status plus the full data payload once status is "ready"; response carries a Content-Disposition download header in that case.
       responses:
         '200':
           description: OK
@@ -1263,6 +1554,71 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
   schemas:
+    AuditAnomaly:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        actor_user_id:
+          type: string
+          format: uuid
+          nullable: true
+        actor_email:
+          type: string
+          nullable: true
+        score:
+          type: number
+          description: 0..1 weighted-novelty anomaly score.
+        reasons:
+          type: array
+          items:
+            type: string
+            enum: [new_action_type, unusual_hour, new_ip]
+        status:
+          type: string
+          enum: [open, resolved]
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        resolved_by:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        action:
+          type: string
+        resource_type:
+          type: string
+        ip:
+          type: string
+          nullable: true
+        event_at:
+          type: string
+          format: date-time
+    AuditAnomalySettings:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        enabled:
+          type: boolean
+        score_threshold:
+          type: number
+          description: 0..1; an event scoring at or above this is flagged.
+        min_baseline_events:
+          type: integer
+          description: Cold-start guard — an actor needs this many historical events before anything is flagged for them.
     RateLimitBucket:
       type: object
       description: A single token-bucket limit (rate tokens/sec, burst capacity).

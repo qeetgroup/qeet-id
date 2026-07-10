@@ -71,11 +71,30 @@ export async function apiGet<T = unknown>(path: string): Promise<T> {
   return parse<T>(res);
 }
 
-export async function apiPost<T = unknown>(path: string, body: unknown): Promise<T> {
+export async function apiPost<T = unknown>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(apiURL(path), {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json", ...(await csrfHeader()) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    credentials: "include",
+  });
+  return parse<T>(res);
+}
+
+export async function apiPatch<T = unknown>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(apiURL(path), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Accept: "application/json", ...(await csrfHeader()) },
     body: JSON.stringify(body),
+    credentials: "include",
+  });
+  return parse<T>(res);
+}
+
+export async function apiDelete<T = unknown>(path: string): Promise<T> {
+  const res = await fetch(apiURL(path), {
+    method: "DELETE",
+    headers: { Accept: "application/json", ...(await csrfHeader()) },
     credentials: "include",
   });
   return parse<T>(res);

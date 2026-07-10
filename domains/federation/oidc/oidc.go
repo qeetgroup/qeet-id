@@ -43,6 +43,9 @@ type Client struct {
 type Service struct {
 	pool   *pgxpool.Pool
 	issuer *tokens.Issuer
+	// notifier delivers the CIBA async consent prompt (nil = no notification;
+	// the user must know to check pending requests themselves). See ciba.go.
+	notifier Notifier
 }
 
 func NewService(pool *pgxpool.Pool, issuer *tokens.Issuer) *Service {
@@ -112,6 +115,76 @@ func (s *Service) RegisterClient(ctx context.Context, tx pgx.Tx, in CreateClient
 		return nil, "", err
 	}
 	return &c, raw, nil
+}
+
+// ShadowAICandidate is an OIDC client capable of unattended machine access
+// (client_credentials or token-exchange in its grant_types) that hasn't been
+// explicitly reviewed — the same "unmanaged non-human identity" risk the
+// agents/service-accounts registries exist to close, surfaced for a client
+// that picked up a machine grant type sideways rather than through either
+// registry. LiveGrants counts its currently active (unexpired, unrevoked)
+// refresh tokens, as a rough signal of how much this matters right now.
+type ShadowAICandidate struct {
+	ID         uuid.UUID `json:"id"`
+	ClientID   string    `json:"client_id"`
+	Name       string    `json:"name"`
+	GrantTypes []string  `json:"grant_types"`
+	LiveGrants int       `json:"live_grants"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// machineGrantTypes are the grant types that let a client obtain a token
+// without a human present in the loop.
+var machineGrantTypes = []string{"client_credentials", grantTypeTokenExchange}
+
+// ShadowAICandidates lists tenantID's unreviewed OIDC clients whose
+// grant_types include a machine grant type, ordered by live-grant count so
+// the ones actually in active use surface first.
+func (s *Service) ShadowAICandidates(ctx context.Context, tenantID uuid.UUID) ([]ShadowAICandidate, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT c.id, c.client_id, c.name, c.grant_types, c.created_at,
+		       COALESCE(g.live, 0) AS live_grants
+		FROM auth.oidc_clients c
+		LEFT JOIN (
+			SELECT client_id, COUNT(*) AS live
+			FROM auth.oidc_refresh_tokens
+			WHERE revoked_at IS NULL AND expires_at > NOW()
+			GROUP BY client_id
+		) g ON g.client_id = c.client_id
+		WHERE c.tenant_id = $1
+		  AND c.reviewed_at IS NULL
+		  AND c.grant_types && $2::text[]
+		ORDER BY live_grants DESC, c.created_at DESC
+	`, tenantID, machineGrantTypes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]ShadowAICandidate, 0)
+	for rows.Next() {
+		var c ShadowAICandidate
+		if err := rows.Scan(&c.ID, &c.ClientID, &c.Name, &c.GrantTypes, &c.CreatedAt, &c.LiveGrants); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ReviewShadowAIClient acknowledges a shadow-AI candidate, dropping it off
+// ShadowAICandidates until/unless its grant_types change again.
+func (s *Service) ReviewShadowAIClient(ctx context.Context, tenantID, id, reviewerUserID uuid.UUID) error {
+	ct, err := s.pool.Exec(ctx, `
+		UPDATE auth.oidc_clients SET reviewed_at = NOW(), reviewed_by = $1
+		WHERE id = $2 AND tenant_id = $3
+	`, reviewerUserID, id, tenantID)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return errs.ErrNotFound
+	}
+	return nil
 }
 
 // Authorize validates an authorization request for an already-authenticated
@@ -262,7 +335,7 @@ func (s *Service) authenticateClient(ctx context.Context, clientID, clientSecret
 // narrowed-down credential to a less-trusted component. The client must be
 // granted "token_exchange". Only access tokens are supported as subject and
 // requested token type.
-func (s *Service) TokenExchange(ctx context.Context, clientID, clientSecret, subjectToken, subjectTokenType, requestedTokenType, scope, actorToken, actorTokenType string) (*TokenResponse, error) {
+func (s *Service) TokenExchange(ctx context.Context, clientID, clientSecret, subjectToken, subjectTokenType, requestedTokenType, scope, actorToken, actorTokenType, resource string) (*TokenResponse, error) {
 	grantTypes, err := s.authenticateClient(ctx, clientID, clientSecret)
 	if err != nil {
 		return nil, err
@@ -316,9 +389,14 @@ func (s *Service) TokenExchange(ctx context.Context, clientID, clientSecret, sub
 		access string
 		exp    time.Time
 	)
-	if actorSubject != "" {
+	switch {
+	case actorSubject != "" && resource != "":
+		access, exp, err = s.issuer.IssueAccessActorResource(userID, claims.TenantID, sid, scopeStr, actorSubject, resource)
+	case actorSubject != "":
 		access, exp, err = s.issuer.IssueAccessActor(userID, claims.TenantID, sid, scopeStr, actorSubject)
-	} else {
+	case resource != "":
+		access, exp, err = s.issuer.IssueAccessResource(userID, claims.TenantID, sid, scopeStr, resource)
+	default:
 		access, exp, err = s.issuer.IssueAccess(userID, claims.TenantID, sid, scopeStr)
 	}
 	if err != nil {
@@ -438,7 +516,7 @@ func (s *Service) ExchangeCode(ctx context.Context, clientID, clientSecret, code
 	}
 	refresh := ""
 	if contains(grantTypes, "refresh_token") {
-		refresh, err = s.issueRefreshToken(ctx, clientID, userID, tenantID, scopes)
+		refresh, err = s.issueRefreshToken(ctx, clientID, userID, tenantID, scopes, resource)
 		if err != nil {
 			return nil, err
 		}
@@ -453,26 +531,37 @@ func (s *Service) ExchangeCode(ctx context.Context, clientID, clientSecret, code
 	}, nil
 }
 
-// issueRefreshToken persists a refresh token bound to the client+user and returns the raw value.
-func (s *Service) issueRefreshToken(ctx context.Context, clientID string, userID, tenantID uuid.UUID, scopes []string) (string, error) {
+// issueRefreshToken persists a refresh token bound to the client+user and
+// returns the raw value. resource (may be empty) is the RFC 8707 resource
+// indicator, if any, bound to the access token this refresh token accompanies
+// — persisted so a later rotation can re-bind the same resource.
+func (s *Service) issueRefreshToken(ctx context.Context, clientID string, userID, tenantID uuid.UUID, scopes []string, resource string) (string, error) {
 	raw, hash, err := tokens.NewRefreshToken()
 	if err != nil {
 		return "", err
 	}
+	var resourceArg any
+	if resource != "" {
+		resourceArg = resource
+	}
 	exp := time.Now().UTC().Add(s.issuer.RefreshTTL())
 	_, err = s.pool.Exec(ctx, `
-		INSERT INTO auth.oidc_refresh_tokens (token_hash, client_id, user_id, tenant_id, scopes, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`, hash, clientID, userID, tenantID, scopes, exp)
+		INSERT INTO auth.oidc_refresh_tokens (token_hash, client_id, user_id, tenant_id, scopes, expires_at, resource)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, hash, clientID, userID, tenantID, scopes, exp, resourceArg)
 	if err != nil {
 		return "", err
 	}
 	return raw, nil
 }
 
-// RefreshToken handles the refresh_token grant: it rotates the presented token and re-issues
-// tokens scoped to the original grant. Replay of a used token revokes every live token for the (client, user).
-func (s *Service) RefreshToken(ctx context.Context, clientID, clientSecret, rawRefresh string) (*TokenResponse, error) {
+// RefreshToken handles the refresh_token grant: it rotates the presented
+// token and re-issues tokens scoped to the original grant. Replay of a used
+// token revokes every live token for the (client, user). resource (RFC 8707,
+// may be empty) lets the caller explicitly switch the bound resource on the
+// reissued access token; when empty, the resource originally bound at
+// issuance (if any) carries forward unchanged.
+func (s *Service) RefreshToken(ctx context.Context, clientID, clientSecret, rawRefresh, resource string) (*TokenResponse, error) {
 	if _, err := s.authenticateClient(ctx, clientID, clientSecret); err != nil {
 		return nil, err
 	}
@@ -488,21 +577,22 @@ func (s *Service) RefreshToken(ctx context.Context, clientID, clientSecret, rawR
 	defer tx.Rollback(ctx)
 
 	var (
-		id          uuid.UUID
-		rowClientID string
-		userID      uuid.UUID
-		tenantID    uuid.UUID
-		scopes      []string
-		expiresAt   time.Time
-		usedAt      *time.Time
-		revokedAt   *time.Time
+		id            uuid.UUID
+		rowClientID   string
+		userID        uuid.UUID
+		tenantID      uuid.UUID
+		scopes        []string
+		expiresAt     time.Time
+		usedAt        *time.Time
+		revokedAt     *time.Time
+		boundResource *string
 	)
 	err = tx.QueryRow(ctx, `
-		SELECT id, client_id, user_id, tenant_id, scopes, expires_at, used_at, revoked_at
+		SELECT id, client_id, user_id, tenant_id, scopes, expires_at, used_at, revoked_at, resource
 		FROM auth.oidc_refresh_tokens
 		WHERE token_hash = $1
 		FOR UPDATE
-	`, hash).Scan(&id, &rowClientID, &userID, &tenantID, &scopes, &expiresAt, &usedAt, &revokedAt)
+	`, hash).Scan(&id, &rowClientID, &userID, &tenantID, &scopes, &expiresAt, &usedAt, &revokedAt, &boundResource)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errs.ErrUnauthorized.WithDetail("unknown refresh token")
 	}
@@ -529,18 +619,25 @@ func (s *Service) RefreshToken(ctx context.Context, clientID, clientSecret, rawR
 	if time.Now().After(expiresAt) {
 		return nil, errs.ErrUnauthorized.WithDetail("refresh token expired")
 	}
+	if resource == "" && boundResource != nil {
+		resource = *boundResource
+	}
 
 	newRaw, newHash, err := tokens.NewRefreshToken()
 	if err != nil {
 		return nil, err
 	}
+	var newResourceArg any
+	if resource != "" {
+		newResourceArg = resource
+	}
 	newExp := time.Now().UTC().Add(s.issuer.RefreshTTL())
 	var newID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO auth.oidc_refresh_tokens (token_hash, client_id, user_id, tenant_id, scopes, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO auth.oidc_refresh_tokens (token_hash, client_id, user_id, tenant_id, scopes, expires_at, resource)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id
-	`, newHash, clientID, userID, tenantID, scopes, newExp).Scan(&newID); err != nil {
+	`, newHash, clientID, userID, tenantID, scopes, newExp, newResourceArg).Scan(&newID); err != nil {
 		return nil, err
 	}
 	if _, err := tx.Exec(ctx, `
@@ -552,7 +649,7 @@ func (s *Service) RefreshToken(ctx context.Context, clientID, clientSecret, rawR
 		return nil, err
 	}
 
-	access, _, err := s.issuer.IssueAccess(userID, tenantID, uuid.New(), strings.Join(scopes, " "))
+	access, _, err := s.issuer.IssueAccessResource(userID, tenantID, uuid.New(), strings.Join(scopes, " "), resource)
 	if err != nil {
 		return nil, err
 	}
@@ -688,6 +785,8 @@ type Handler struct {
 func (h *Handler) Mount(r chi.Router) {
 	r.Post("/oidc/clients", h.registerClient)
 	r.Get("/oauth/userinfo", h.userinfo)
+	r.Get("/oauth/bc-authorize/pending", h.pendingBackchannel)
+	r.Post("/oauth/bc-authorize/decision", h.backchannelDecision)
 	r.Get("/tenants/{tenantID}/oauth/grants", h.listGrants)
 	r.Delete("/tenants/{tenantID}/oauth/grants/{id}", h.revokeGrant)
 
@@ -699,6 +798,8 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Patch("/tenants/{tenantID}/oidc/clients/{id}", h.patchClient)
 	r.Delete("/tenants/{tenantID}/oidc/clients/{id}", h.deleteClient)
 	r.Post("/tenants/{tenantID}/oidc/clients/{id}/rotate-secret", h.rotateClientSecret)
+	r.Get("/tenants/{tenantID}/oidc/clients/shadow-ai", h.shadowAI)
+	r.Post("/tenants/{tenantID}/oidc/clients/{id}/review", h.reviewShadowAI)
 
 	// The admin UI's list page wires Delete to the non-tenant-scoped
 	// /v1/oidc/clients/{id}; the create sheet posts to /v1/oidc/clients (handled
@@ -733,6 +834,11 @@ func (h *Handler) MountBrowser(r chi.Router) {
 	r.Post("/oauth/device_authorization", h.deviceAuthorization)
 	r.Get("/oauth/device", h.deviceContext)
 	r.Post("/oauth/device/decision", h.deviceDecision)
+	// OpenID CIBA (poll mode). bc-authorize is client-credential M2M like
+	// device_authorization above (CSRF-exempt in the router); the
+	// pending/decision endpoints are bearer-JWT authenticated and live in
+	// Mount, not here.
+	r.Post("/oauth/bc-authorize", h.backchannelAuthorize)
 }
 
 // loginContext gives the hosted login app what it needs to render itself for a
@@ -1057,13 +1163,13 @@ func (h *Handler) tokenCode(w http.ResponseWriter, r *http.Request) {
 			r.Form.Get("code"), r.Form.Get("redirect_uri"), r.Form.Get("code_verifier"), resource)
 	case "refresh_token":
 		resp, err = h.Service.RefreshToken(r.Context(),
-			clientID, clientSecret, r.Form.Get("refresh_token"))
+			clientID, clientSecret, r.Form.Get("refresh_token"), resource)
 	case grantTypeTokenExchange:
 		resp, err = h.Service.TokenExchange(r.Context(),
 			clientID, clientSecret,
 			r.Form.Get("subject_token"), r.Form.Get("subject_token_type"),
 			r.Form.Get("requested_token_type"), r.Form.Get("scope"),
-			r.Form.Get("actor_token"), r.Form.Get("actor_token_type"))
+			r.Form.Get("actor_token"), r.Form.Get("actor_token_type"), resource)
 	case "urn:ietf:params:oauth:grant-type:device_code":
 		// RFC 8628 §3.4 polling. The device authenticates with its client_id +
 		// device_code; the device_code itself is the proof, so a client_secret is
@@ -1071,6 +1177,20 @@ func (h *Handler) tokenCode(w http.ResponseWriter, r *http.Request) {
 		// RFC 6749 §5.2 flat {"error","error_description"} shape OAuth clients
 		// parse, rendered by writeOAuthError.
 		resp, err = h.Service.DeviceToken(r.Context(), clientID, r.Form.Get("device_code"))
+		if err != nil {
+			var oe *oauthError
+			if errors.As(err, &oe) {
+				writeOAuthError(w, oe)
+				return
+			}
+			httpx.WriteError(w, r, err)
+			return
+		}
+		httpx.WriteJSON(w, http.StatusOK, resp)
+		return
+	case grantTypeCIBA:
+		// OpenID CIBA §10 polling. Same error-rendering shape as device_code.
+		resp, err = h.Service.BackchannelToken(r.Context(), clientID, r.Form.Get("auth_req_id"))
 		if err != nil {
 			var oe *oauthError
 			if errors.As(err, &oe) {
@@ -1165,7 +1285,11 @@ func (h *Handler) discovery(w http.ResponseWriter, r *http.Request) {
 		"subject_types_supported":               []string{"public"},
 		"id_token_signing_alg_values_supported": []string{h.Service.issuer.Alg()},
 		"scopes_supported":                      []string{"openid", "profile", "email"},
-		"grant_types_supported":                 []string{"authorization_code", "client_credentials", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code", grantTypeTokenExchange},
+		"grant_types_supported":                 []string{"authorization_code", "client_credentials", "refresh_token", "urn:ietf:params:oauth:grant-type:device_code", grantTypeTokenExchange, grantTypeCIBA},
+		// OpenID CIBA — poll mode only (no ping/push notification_endpoint).
+		"backchannel_token_delivery_modes_supported": []string{"poll"},
+		"backchannel_authentication_endpoint":         base + "/v1/oauth/bc-authorize",
+		"backchannel_user_code_parameter_supported":   false,
 		"code_challenge_methods_supported":      []string{"S256"},
 		// RFC 9728 — Protected Resource Metadata discovery link
 		"protected_resource_metadata": base + "/.well-known/oauth-protected-resource",
@@ -1173,6 +1297,12 @@ func (h *Handler) discovery(w http.ResponseWriter, r *http.Request) {
 		"resource_indicators_supported": true,
 		// RFC 9207 — the authorization response carries an `iss` parameter.
 		"authorization_response_iss_parameter_supported": true,
+		// Non-standard: advertises first-class non-human principals. Rather
+		// than a sub-prefix convention (which would break RFC 8693 token
+		// exchange's assumption that subject_token's sub is a parseable user
+		// UUID — see TokenExchange), an agent token self-describes via the
+		// actor_type + agent_id claims, also surfaced on /oauth/introspect.
+		"actor_types_supported": []string{"user", "service", "agent"},
 	})
 }
 

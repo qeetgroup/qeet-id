@@ -10,7 +10,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/qeetgroup/qeet-id/domains/access/authorization/authzen"
 	"github.com/qeetgroup/qeet-id/domains/access/authorization/rbac"
+	"github.com/qeetgroup/qeet-id/domains/access/authorization/rebac"
 	"github.com/qeetgroup/qeet-id/domains/operations/compliance"
 )
 
@@ -381,6 +383,113 @@ func TestRBACExplain(t *testing.T) {
 	}
 	if !sawDirect || !sawGroup {
 		t.Errorf("explain paths = %+v, want both a direct and a group:Auditors path", exp.Paths)
+	}
+}
+
+// TestAuthZENEvaluation exercises the AuthZEN /evaluation facade end to end
+// against both backends it fronts: resource.type="permission" must route to
+// RBAC (and its ?explain=true-equivalent context.explain), anything else must
+// route to ReBAC.
+func TestAuthZENEvaluation(t *testing.T) {
+	requireDB(t)
+	ctx := context.Background()
+	rbacRepo := rbac.NewRepository(testPool)
+	rebacSvc := rebac.NewService(testPool)
+	svc := authzen.NewService(rbacRepo, rebacSvc)
+
+	tenantID := createTenant(t, ctx, uniqueSlug("azen"))
+	user := createUserInTenant(t, ctx, tenantID)
+
+	// RBAC branch: denial before any grant.
+	deny, err := svc.Evaluate(ctx, tenantID, authzen.EvaluationRequest{
+		Subject:  authzen.Subject{Type: "user", ID: user.String()},
+		Resource: authzen.Resource{Type: "permission"},
+		Action:   authzen.Action{Name: "report:read"},
+	})
+	if err != nil {
+		t.Fatalf("evaluate deny: %v", err)
+	}
+	if deny.Decision {
+		t.Fatalf("decision = true before any grant, want false")
+	}
+
+	tx, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	perm, err := rbacRepo.UpsertPermission(ctx, tx, "report:read", "read report")
+	if err != nil {
+		t.Fatalf("permission: %v", err)
+	}
+	role, err := rbacRepo.CreateRole(ctx, tx, tenantID, "reader-"+uniqueSlug("r"), "", false)
+	if err != nil {
+		t.Fatalf("role: %v", err)
+	}
+	if err := rbacRepo.GrantPermission(ctx, tx, role.ID, perm.ID); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	atx, err := testPool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin assign: %v", err)
+	}
+	if err := rbacRepo.AssignRole(ctx, atx, user, tenantID, role.ID, nil); err != nil {
+		t.Fatalf("assign: %v", err)
+	}
+	if err := atx.Commit(ctx); err != nil {
+		t.Fatalf("commit assign: %v", err)
+	}
+
+	// RBAC branch: allow after grant, with explain context.
+	allow, err := svc.Evaluate(ctx, tenantID, authzen.EvaluationRequest{
+		Subject:  authzen.Subject{Type: "user", ID: user.String()},
+		Resource: authzen.Resource{Type: "permission"},
+		Action:   authzen.Action{Name: "report:read"},
+		Context:  map[string]any{"explain": true},
+	})
+	if err != nil {
+		t.Fatalf("evaluate allow: %v", err)
+	}
+	if !allow.Decision {
+		t.Fatalf("decision = false after grant, want true")
+	}
+	if allow.Context == nil || allow.Context["paths"] == nil {
+		t.Errorf("explain context missing paths: %+v", allow.Context)
+	}
+
+	// ReBAC branch: denial before any tuple, allow after one is written.
+	object := "document:" + uniqueSlug("doc")
+	rebacDeny, err := svc.Evaluate(ctx, tenantID, authzen.EvaluationRequest{
+		Subject:  authzen.Subject{Type: "user", ID: user.String()},
+		Resource: authzen.Resource{Type: "document", ID: object[len("document:"):]},
+		Action:   authzen.Action{Name: "editor"},
+	})
+	if err != nil {
+		t.Fatalf("evaluate rebac deny: %v", err)
+	}
+	if rebacDeny.Decision {
+		t.Fatalf("rebac decision = true before any tuple, want false")
+	}
+
+	if _, err := rebacSvc.Write(ctx, tenantID, object, "editor", "user:"+user.String()); err != nil {
+		t.Fatalf("write tuple: %v", err)
+	}
+	rebacAllow, err := svc.Evaluate(ctx, tenantID, authzen.EvaluationRequest{
+		Subject:  authzen.Subject{Type: "user", ID: user.String()},
+		Resource: authzen.Resource{Type: "document", ID: object[len("document:"):]},
+		Action:   authzen.Action{Name: "editor"},
+		Context:  map[string]any{"explain": true},
+	})
+	if err != nil {
+		t.Fatalf("evaluate rebac allow: %v", err)
+	}
+	if !rebacAllow.Decision {
+		t.Fatalf("rebac decision = false after tuple write, want true")
+	}
+	if rebacAllow.Context == nil || rebacAllow.Context["path"] == nil {
+		t.Errorf("rebac explain context missing path: %+v", rebacAllow.Context)
 	}
 }
 

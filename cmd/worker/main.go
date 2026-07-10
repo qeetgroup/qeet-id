@@ -18,13 +18,14 @@ import (
 	"time"
 
 	"github.com/qeetgroup/qeet-id/domains/developer/webhooks"
+	"github.com/qeetgroup/qeet-id/domains/operations/audit/anomaly"
 	"github.com/qeetgroup/qeet-id/domains/operations/compliance"
 	"github.com/qeetgroup/qeet-id/domains/operations/retention"
 	"github.com/qeetgroup/qeet-id/domains/operations/siem"
-	"github.com/qeetgroup/qeet-id/platform/observability/buildinfo"
 	"github.com/qeetgroup/qeet-id/platform/config"
 	"github.com/qeetgroup/qeet-id/platform/database/postgres"
 	"github.com/qeetgroup/qeet-id/platform/events/outbox"
+	"github.com/qeetgroup/qeet-id/platform/observability/buildinfo"
 	"github.com/qeetgroup/qeet-id/platform/observability/logging"
 	"github.com/qeetgroup/qeet-id/platform/workers"
 )
@@ -67,6 +68,7 @@ func main() {
 	gdprService := gdpr.NewService(pool, 30*24*time.Hour)
 	retentionService := retention.NewService(pool)
 	siemService := siem.NewService(pool)
+	auditAnomalyService := anomaly.NewService(pool)
 
 	sup := worker.New()
 	sup.Register("outbox", outboxDispatcher.Run)
@@ -74,6 +76,7 @@ func main() {
 	sup.Register("gdpr", gdprService.Run)
 	sup.Register("retention", retentionService.Run)
 	sup.Register("siem", siemService.Run)
+	sup.Register("audit-anomaly", auditAnomalyService.Run)
 
 	wait := sup.Start(rootCtx)
 

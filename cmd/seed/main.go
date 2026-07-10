@@ -482,7 +482,7 @@ func main() {
 	must(err, "auth hook")
 
 	// ---- AI agent (ephemeral scoped tokens) ----
-	_, err = agentSvc.Create(ctx, qeet.ID, "Support Copilot", []string{"users:read"}, 3600)
+	_, err = agentSvc.Create(ctx, qeet.ID, "Support Copilot", []string{"users:read"}, 3600, founder.ID)
 	must(err, "ai agent")
 
 	// ---- Verifiable credential issued to the founder ----
