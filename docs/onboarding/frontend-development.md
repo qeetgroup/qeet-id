@@ -13,7 +13,6 @@ Qeet ID has three frontend apps in a Bun/Turborepo workspace. All are TypeScript
 ## Setup
 
 ```bash
-nvm use            # required: Node ≥24 (from the repo .nvmrc)
 make install       # installs all workspace deps (bun install at root)
 ```
 

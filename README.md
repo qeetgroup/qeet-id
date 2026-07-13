@@ -172,7 +172,7 @@ All planned packages/surfaces are tracked in [ROADMAP.md](./ROADMAP.md).
 
 ## 🚀 Quickstart
 
-**Prerequisites:** Go ≥ 1.25 · Node ≥ 24 (via nvm) · Bun ≥ 1.3.14 · Docker · [golang-migrate CLI](https://github.com/golang-migrate/migrate/tree/master/cmd/migrate)
+**Prerequisites:** Go ≥ 1.25 · Bun ≥ 1.3.14 · Docker · [golang-migrate CLI](https://github.com/golang-migrate/migrate/tree/master/cmd/migrate)
 
 ```bash
 # 1. Clone
@@ -180,7 +180,7 @@ git clone https://github.com/qeetgroup/qeet-id && cd qeet-id
 
 # 2. Install dependencies
 go mod download
-nvm use 24 && bun install
+bun install
 
 # 3. Copy env files
 cp .env.example .env                                      # backend — DB_URL has a working local default

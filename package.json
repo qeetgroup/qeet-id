@@ -25,7 +25,7 @@
     "check": "turbo run check",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "clean": "rm -rf node_modules .turbo apps/*/node_modules apps/*/.turbo apps/*/dist apps/*/.netlify apps/*/.output packages/*/node_modules packages/*/.turbo packages/*/dist sdk/js/*/node_modules sdk/js/*/.turbo sdk/js/*/dist examples/*/node_modules examples/*/.turbo examples/*/dist"
+    "clean": "rm -rf node_modules .turbo apps/*/node_modules apps/*/.turbo apps/*/dist apps/*/.netlify apps/*/.output packages/*/node_modules packages/*/.turbo packages/*/dist"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -39,8 +39,5 @@
     "prettier-plugin-tailwindcss": "^0.8.0",
     "turbo": "^2.10.0",
     "typescript-eslint": "^8.62.0"
-  },
-  "engines": {
-    "node": ">=24"
   }
 }

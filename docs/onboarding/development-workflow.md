@@ -17,7 +17,6 @@ git push origin feat/my-feature
 ## Before you start any work
 
 ```bash
-nvm use            # frontend builds require Node ≥24 (from .nvmrc); system default is v18
 make install       # ensure deps are current: go mod tidy + bun install
 ```
 

@@ -10,7 +10,6 @@ domains/       Business logic (5 bounded contexts)
 platform/      Shared infrastructure
 apps/          3 React frontend apps
 packages/      Shared JS config (tsconfig, eslint)
-sdk/           Client SDKs (JS, Go, Python)
 api/           OpenAPI specs (5 domain files) + Postman collection
 tests/         Go integration + architecture tests
 docs/          You are here
