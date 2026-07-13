@@ -93,7 +93,7 @@ The three frontend apps are separate build artifacts deployed independently:
 | `@qeetid/login` (hosted login) | Next.js SSR | Bun container (self-hosted), or Vercel (runs Next on Node) |
 | `@qeetid/web` (website) | Next.js SSR | Bun container (self-hosted), or Vercel (runs Next on Node) |
 
-Frontend builds: `bun run build` (Turborepo runs all three in parallel).
+Frontend builds: `bun run build` (Bun runs all three in parallel via `bun run --filter`).
 
 ---
 

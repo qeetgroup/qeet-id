@@ -1,6 +1,6 @@
 # qeet-id — CLAUDE.md
 
-**Qeet ID** — identity platform (Auth0/Okta alternative, passkeys-first), pre-1.0. One Go modular-monolith backend + 3 React frontends (Bun/Turbo), **all hoisted to the repo root** (no `backend/`/`frontend/` wrappers).
+**Qeet ID** — identity platform (Auth0/Okta alternative, passkeys-first), pre-1.0. One Go modular-monolith backend + 3 React frontends (Bun workspaces), **all hoisted to the repo root** (no `backend/`/`frontend/` wrappers).
 
 ## Layout (all at repo root)
 
@@ -28,14 +28,14 @@ make kill                            # free a stuck :4001
 
 No `make help`/`install`/`dev-*`/`test-*` exist — don't invent targets. Single Go test: `go test ./domains/access/authentication/... -run TestName`.
 
-**Frontend — Bun + Turborepo:**
+**Frontend — Bun workspaces:**
 
 ```bash
 bun install
-bun run dev         # all apps
-bun run dev:admin   # console  :3002  (@qeet-id/console)
-bun run dev:web     # website  :3001  (@qeet-id/web)
-bun run dev:login   # login    :3004  (@qeet-id/login)
+bun run dev           # all apps
+bun run dev:console   # console  :3002  (@qeet-id/console)
+bun run dev:website   # website  :3001  (@qeet-id/web)
+bun run dev:login     # login    :3004  (@qeet-id/login)
 bun run build | lint | format | check | typecheck | test
 ```
 

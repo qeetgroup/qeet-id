@@ -40,12 +40,12 @@ If you prefer not to use Tailwind CSS:
 
 ## Linting & Formatting
 
-This project uses [ESLint](https://eslint.org/) for linting and [Prettier](https://prettier.io/) for formatting. The following scripts are available:
+This project uses [Biome](https://biomejs.dev/) for both linting and formatting, configured at the workspace root (`biome.json`). Run these commands from the repo root:
 
 ```bash
-bun run lint
-bun run format
-bun run check
+bun run lint    # biome lint .
+bun run format  # biome format --write .
+bun run check   # biome check .
 ```
 
 ## Deploy with Nitro
