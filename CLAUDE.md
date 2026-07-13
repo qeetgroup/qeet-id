@@ -10,7 +10,7 @@ domains/    business logic by bounded context: identity/ access/ federation/ dev
 platform/   shared infra: api/rest  database/{postgres,migrations,repositories}  cache/ messaging/ events/ observability/ security/ config/
 apps/       frontends: console (admin), login, website   (docs/, status/ = placeholders)
 api/        contracts: openapi/ (5 split OpenAPI 3.1 specs) · postman/
-packages/   shared JS config (qeetid-tsconfig)   ·   deploy/ tests/ tools/ bin/
+tsconfig.base.json  shared TS base config (each app's tsconfig extends it)   ·   deploy/ tests/ tools/ bin/
 ```
 
 ## Commands (run from repo root)
@@ -18,6 +18,7 @@ packages/   shared JS config (qeetid-tsconfig)   ·   deploy/ tests/ tools/ bin/
 **Backend + infra — Makefile (Go only).** The complete target set is exactly:
 
 ```bash
+make install        # go mod download (backend deps — parallel to `bun install`)
 make dev            # go run ./cmd/server  (:4001)
 make build test lint
 make db-up db-down db-reset          # Postgres :5001 (Docker Compose)
@@ -26,7 +27,7 @@ make seed seed-reset                 # demo data
 make kill                            # free a stuck :4001
 ```
 
-No `make help`/`install`/`dev-*`/`test-*` exist — don't invent targets. Single Go test: `go test ./domains/access/authentication/... -run TestName`.
+No `make help`/`dev-*`/`test-*` exist — don't invent targets. Single Go test: `go test ./domains/access/authentication/... -run TestName`.
 
 **Frontend — Bun workspaces:**
 
