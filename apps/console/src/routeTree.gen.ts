@@ -28,6 +28,7 @@ import { Route as AppSplatRouteImport } from './routes/_app/$'
 import { Route as AppUsersIndexRouteImport } from './routes/_app/users/index'
 import { Route as AppSecurityIndexRouteImport } from './routes/_app/security/index'
 import { Route as AppGroupsIndexRouteImport } from './routes/_app/groups/index'
+import { Route as AppAuthorizationIndexRouteImport } from './routes/_app/authorization/index'
 import { Route as AuthSsoCallbackRouteImport } from './routes/_auth/sso.callback'
 import { Route as AuthInviteAcceptRouteImport } from './routes/_auth/invite.accept'
 import { Route as AppUsersSessionsRouteImport } from './routes/_app/users/sessions'
@@ -52,6 +53,19 @@ import { Route as AppDeveloperCredentialsRouteImport } from './routes/_app/devel
 import { Route as AppDeveloperBotsRouteImport } from './routes/_app/developer/bots'
 import { Route as AppDeveloperAuthHooksRouteImport } from './routes/_app/developer/auth-hooks'
 import { Route as AppDeveloperAgentsRouteImport } from './routes/_app/developer/agents'
+import { Route as AppAuthorizationVersionsRouteImport } from './routes/_app/authorization/versions'
+import { Route as AppAuthorizationTemplatesRouteImport } from './routes/_app/authorization/templates'
+import { Route as AppAuthorizationSimulatorRouteImport } from './routes/_app/authorization/simulator'
+import { Route as AppAuthorizationSettingsRouteImport } from './routes/_app/authorization/settings'
+import { Route as AppAuthorizationRolesRouteImport } from './routes/_app/authorization/roles'
+import { Route as AppAuthorizationRebacRouteImport } from './routes/_app/authorization/rebac'
+import { Route as AppAuthorizationRbacRouteImport } from './routes/_app/authorization/rbac'
+import { Route as AppAuthorizationPermissionsRouteImport } from './routes/_app/authorization/permissions'
+import { Route as AppAuthorizationExplorerRouteImport } from './routes/_app/authorization/explorer'
+import { Route as AppAuthorizationBuilderRouteImport } from './routes/_app/authorization/builder'
+import { Route as AppAuthorizationAuditRouteImport } from './routes/_app/authorization/audit'
+import { Route as AppAuthorizationAssistantRouteImport } from './routes/_app/authorization/assistant'
+import { Route as AppAuthorizationAbacRouteImport } from './routes/_app/authorization/abac'
 import { Route as AppAuthSocialRouteImport } from './routes/_app/auth/social'
 import { Route as AppAccessResourcesRouteImport } from './routes/_app/access/resources'
 import { Route as AppAccessRelationshipsRouteImport } from './routes/_app/access/relationships'
@@ -188,6 +202,11 @@ const AppGroupsIndexRoute = AppGroupsIndexRouteImport.update({
   path: '/groups/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAuthorizationIndexRoute = AppAuthorizationIndexRouteImport.update({
+  id: '/authorization/',
+  path: '/authorization/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AuthSsoCallbackRoute = AuthSsoCallbackRouteImport.update({
   id: '/sso/callback',
   path: '/sso/callback',
@@ -309,6 +328,78 @@ const AppDeveloperAuthHooksRoute = AppDeveloperAuthHooksRouteImport.update({
 const AppDeveloperAgentsRoute = AppDeveloperAgentsRouteImport.update({
   id: '/developer/agents',
   path: '/developer/agents',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuthorizationVersionsRoute =
+  AppAuthorizationVersionsRouteImport.update({
+    id: '/authorization/versions',
+    path: '/authorization/versions',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAuthorizationTemplatesRoute =
+  AppAuthorizationTemplatesRouteImport.update({
+    id: '/authorization/templates',
+    path: '/authorization/templates',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAuthorizationSimulatorRoute =
+  AppAuthorizationSimulatorRouteImport.update({
+    id: '/authorization/simulator',
+    path: '/authorization/simulator',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAuthorizationSettingsRoute =
+  AppAuthorizationSettingsRouteImport.update({
+    id: '/authorization/settings',
+    path: '/authorization/settings',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAuthorizationRolesRoute = AppAuthorizationRolesRouteImport.update({
+  id: '/authorization/roles',
+  path: '/authorization/roles',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuthorizationRebacRoute = AppAuthorizationRebacRouteImport.update({
+  id: '/authorization/rebac',
+  path: '/authorization/rebac',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuthorizationRbacRoute = AppAuthorizationRbacRouteImport.update({
+  id: '/authorization/rbac',
+  path: '/authorization/rbac',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuthorizationPermissionsRoute =
+  AppAuthorizationPermissionsRouteImport.update({
+    id: '/authorization/permissions',
+    path: '/authorization/permissions',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAuthorizationExplorerRoute =
+  AppAuthorizationExplorerRouteImport.update({
+    id: '/authorization/explorer',
+    path: '/authorization/explorer',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAuthorizationBuilderRoute = AppAuthorizationBuilderRouteImport.update({
+  id: '/authorization/builder',
+  path: '/authorization/builder',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuthorizationAuditRoute = AppAuthorizationAuditRouteImport.update({
+  id: '/authorization/audit',
+  path: '/authorization/audit',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuthorizationAssistantRoute =
+  AppAuthorizationAssistantRouteImport.update({
+    id: '/authorization/assistant',
+    path: '/authorization/assistant',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppAuthorizationAbacRoute = AppAuthorizationAbacRouteImport.update({
+  id: '/authorization/abac',
+  path: '/authorization/abac',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAuthSocialRoute = AppAuthSocialRouteImport.update({
@@ -563,6 +654,19 @@ export interface FileRoutesByFullPath {
   '/access/relationships': typeof AppAccessRelationshipsRoute
   '/access/resources': typeof AppAccessResourcesRoute
   '/auth/social': typeof AppAuthSocialRoute
+  '/authorization/abac': typeof AppAuthorizationAbacRoute
+  '/authorization/assistant': typeof AppAuthorizationAssistantRoute
+  '/authorization/audit': typeof AppAuthorizationAuditRoute
+  '/authorization/builder': typeof AppAuthorizationBuilderRoute
+  '/authorization/explorer': typeof AppAuthorizationExplorerRoute
+  '/authorization/permissions': typeof AppAuthorizationPermissionsRoute
+  '/authorization/rbac': typeof AppAuthorizationRbacRoute
+  '/authorization/rebac': typeof AppAuthorizationRebacRoute
+  '/authorization/roles': typeof AppAuthorizationRolesRoute
+  '/authorization/settings': typeof AppAuthorizationSettingsRoute
+  '/authorization/simulator': typeof AppAuthorizationSimulatorRoute
+  '/authorization/templates': typeof AppAuthorizationTemplatesRoute
+  '/authorization/versions': typeof AppAuthorizationVersionsRoute
   '/developer/agents': typeof AppDeveloperAgentsRoute
   '/developer/auth-hooks': typeof AppDeveloperAuthHooksRoute
   '/developer/bots': typeof AppDeveloperBotsRoute
@@ -587,6 +691,7 @@ export interface FileRoutesByFullPath {
   '/users/sessions': typeof AppUsersSessionsRoute
   '/invite/accept': typeof AuthInviteAcceptRoute
   '/sso/callback': typeof AuthSsoCallbackRoute
+  '/authorization/': typeof AppAuthorizationIndexRoute
   '/groups/': typeof AppGroupsIndexRoute
   '/security/': typeof AppSecurityIndexRoute
   '/users/': typeof AppUsersIndexRoute
@@ -648,6 +753,19 @@ export interface FileRoutesByTo {
   '/access/relationships': typeof AppAccessRelationshipsRoute
   '/access/resources': typeof AppAccessResourcesRoute
   '/auth/social': typeof AppAuthSocialRoute
+  '/authorization/abac': typeof AppAuthorizationAbacRoute
+  '/authorization/assistant': typeof AppAuthorizationAssistantRoute
+  '/authorization/audit': typeof AppAuthorizationAuditRoute
+  '/authorization/builder': typeof AppAuthorizationBuilderRoute
+  '/authorization/explorer': typeof AppAuthorizationExplorerRoute
+  '/authorization/permissions': typeof AppAuthorizationPermissionsRoute
+  '/authorization/rbac': typeof AppAuthorizationRbacRoute
+  '/authorization/rebac': typeof AppAuthorizationRebacRoute
+  '/authorization/roles': typeof AppAuthorizationRolesRoute
+  '/authorization/settings': typeof AppAuthorizationSettingsRoute
+  '/authorization/simulator': typeof AppAuthorizationSimulatorRoute
+  '/authorization/templates': typeof AppAuthorizationTemplatesRoute
+  '/authorization/versions': typeof AppAuthorizationVersionsRoute
   '/developer/agents': typeof AppDeveloperAgentsRoute
   '/developer/auth-hooks': typeof AppDeveloperAuthHooksRoute
   '/developer/bots': typeof AppDeveloperBotsRoute
@@ -672,6 +790,7 @@ export interface FileRoutesByTo {
   '/users/sessions': typeof AppUsersSessionsRoute
   '/invite/accept': typeof AuthInviteAcceptRoute
   '/sso/callback': typeof AuthSsoCallbackRoute
+  '/authorization': typeof AppAuthorizationIndexRoute
   '/groups': typeof AppGroupsIndexRoute
   '/security': typeof AppSecurityIndexRoute
   '/users': typeof AppUsersIndexRoute
@@ -736,6 +855,19 @@ export interface FileRoutesById {
   '/_app/access/relationships': typeof AppAccessRelationshipsRoute
   '/_app/access/resources': typeof AppAccessResourcesRoute
   '/_app/auth/social': typeof AppAuthSocialRoute
+  '/_app/authorization/abac': typeof AppAuthorizationAbacRoute
+  '/_app/authorization/assistant': typeof AppAuthorizationAssistantRoute
+  '/_app/authorization/audit': typeof AppAuthorizationAuditRoute
+  '/_app/authorization/builder': typeof AppAuthorizationBuilderRoute
+  '/_app/authorization/explorer': typeof AppAuthorizationExplorerRoute
+  '/_app/authorization/permissions': typeof AppAuthorizationPermissionsRoute
+  '/_app/authorization/rbac': typeof AppAuthorizationRbacRoute
+  '/_app/authorization/rebac': typeof AppAuthorizationRebacRoute
+  '/_app/authorization/roles': typeof AppAuthorizationRolesRoute
+  '/_app/authorization/settings': typeof AppAuthorizationSettingsRoute
+  '/_app/authorization/simulator': typeof AppAuthorizationSimulatorRoute
+  '/_app/authorization/templates': typeof AppAuthorizationTemplatesRoute
+  '/_app/authorization/versions': typeof AppAuthorizationVersionsRoute
   '/_app/developer/agents': typeof AppDeveloperAgentsRoute
   '/_app/developer/auth-hooks': typeof AppDeveloperAuthHooksRoute
   '/_app/developer/bots': typeof AppDeveloperBotsRoute
@@ -760,6 +892,7 @@ export interface FileRoutesById {
   '/_app/users/sessions': typeof AppUsersSessionsRoute
   '/_auth/invite/accept': typeof AuthInviteAcceptRoute
   '/_auth/sso/callback': typeof AuthSsoCallbackRoute
+  '/_app/authorization/': typeof AppAuthorizationIndexRoute
   '/_app/groups/': typeof AppGroupsIndexRoute
   '/_app/security/': typeof AppSecurityIndexRoute
   '/_app/users/': typeof AppUsersIndexRoute
@@ -823,6 +956,19 @@ export interface FileRouteTypes {
     | '/access/relationships'
     | '/access/resources'
     | '/auth/social'
+    | '/authorization/abac'
+    | '/authorization/assistant'
+    | '/authorization/audit'
+    | '/authorization/builder'
+    | '/authorization/explorer'
+    | '/authorization/permissions'
+    | '/authorization/rbac'
+    | '/authorization/rebac'
+    | '/authorization/roles'
+    | '/authorization/settings'
+    | '/authorization/simulator'
+    | '/authorization/templates'
+    | '/authorization/versions'
     | '/developer/agents'
     | '/developer/auth-hooks'
     | '/developer/bots'
@@ -847,6 +993,7 @@ export interface FileRouteTypes {
     | '/users/sessions'
     | '/invite/accept'
     | '/sso/callback'
+    | '/authorization/'
     | '/groups/'
     | '/security/'
     | '/users/'
@@ -908,6 +1055,19 @@ export interface FileRouteTypes {
     | '/access/relationships'
     | '/access/resources'
     | '/auth/social'
+    | '/authorization/abac'
+    | '/authorization/assistant'
+    | '/authorization/audit'
+    | '/authorization/builder'
+    | '/authorization/explorer'
+    | '/authorization/permissions'
+    | '/authorization/rbac'
+    | '/authorization/rebac'
+    | '/authorization/roles'
+    | '/authorization/settings'
+    | '/authorization/simulator'
+    | '/authorization/templates'
+    | '/authorization/versions'
     | '/developer/agents'
     | '/developer/auth-hooks'
     | '/developer/bots'
@@ -932,6 +1092,7 @@ export interface FileRouteTypes {
     | '/users/sessions'
     | '/invite/accept'
     | '/sso/callback'
+    | '/authorization'
     | '/groups'
     | '/security'
     | '/users'
@@ -995,6 +1156,19 @@ export interface FileRouteTypes {
     | '/_app/access/relationships'
     | '/_app/access/resources'
     | '/_app/auth/social'
+    | '/_app/authorization/abac'
+    | '/_app/authorization/assistant'
+    | '/_app/authorization/audit'
+    | '/_app/authorization/builder'
+    | '/_app/authorization/explorer'
+    | '/_app/authorization/permissions'
+    | '/_app/authorization/rbac'
+    | '/_app/authorization/rebac'
+    | '/_app/authorization/roles'
+    | '/_app/authorization/settings'
+    | '/_app/authorization/simulator'
+    | '/_app/authorization/templates'
+    | '/_app/authorization/versions'
     | '/_app/developer/agents'
     | '/_app/developer/auth-hooks'
     | '/_app/developer/bots'
@@ -1019,6 +1193,7 @@ export interface FileRouteTypes {
     | '/_app/users/sessions'
     | '/_auth/invite/accept'
     | '/_auth/sso/callback'
+    | '/_app/authorization/'
     | '/_app/groups/'
     | '/_app/security/'
     | '/_app/users/'
@@ -1201,6 +1376,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppGroupsIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/authorization/': {
+      id: '/_app/authorization/'
+      path: '/authorization'
+      fullPath: '/authorization/'
+      preLoaderRoute: typeof AppAuthorizationIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_auth/sso/callback': {
       id: '/_auth/sso/callback'
       path: '/sso/callback'
@@ -1367,6 +1549,97 @@ declare module '@tanstack/react-router' {
       path: '/developer/agents'
       fullPath: '/developer/agents'
       preLoaderRoute: typeof AppDeveloperAgentsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/versions': {
+      id: '/_app/authorization/versions'
+      path: '/authorization/versions'
+      fullPath: '/authorization/versions'
+      preLoaderRoute: typeof AppAuthorizationVersionsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/templates': {
+      id: '/_app/authorization/templates'
+      path: '/authorization/templates'
+      fullPath: '/authorization/templates'
+      preLoaderRoute: typeof AppAuthorizationTemplatesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/simulator': {
+      id: '/_app/authorization/simulator'
+      path: '/authorization/simulator'
+      fullPath: '/authorization/simulator'
+      preLoaderRoute: typeof AppAuthorizationSimulatorRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/settings': {
+      id: '/_app/authorization/settings'
+      path: '/authorization/settings'
+      fullPath: '/authorization/settings'
+      preLoaderRoute: typeof AppAuthorizationSettingsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/roles': {
+      id: '/_app/authorization/roles'
+      path: '/authorization/roles'
+      fullPath: '/authorization/roles'
+      preLoaderRoute: typeof AppAuthorizationRolesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/rebac': {
+      id: '/_app/authorization/rebac'
+      path: '/authorization/rebac'
+      fullPath: '/authorization/rebac'
+      preLoaderRoute: typeof AppAuthorizationRebacRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/rbac': {
+      id: '/_app/authorization/rbac'
+      path: '/authorization/rbac'
+      fullPath: '/authorization/rbac'
+      preLoaderRoute: typeof AppAuthorizationRbacRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/permissions': {
+      id: '/_app/authorization/permissions'
+      path: '/authorization/permissions'
+      fullPath: '/authorization/permissions'
+      preLoaderRoute: typeof AppAuthorizationPermissionsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/explorer': {
+      id: '/_app/authorization/explorer'
+      path: '/authorization/explorer'
+      fullPath: '/authorization/explorer'
+      preLoaderRoute: typeof AppAuthorizationExplorerRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/builder': {
+      id: '/_app/authorization/builder'
+      path: '/authorization/builder'
+      fullPath: '/authorization/builder'
+      preLoaderRoute: typeof AppAuthorizationBuilderRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/audit': {
+      id: '/_app/authorization/audit'
+      path: '/authorization/audit'
+      fullPath: '/authorization/audit'
+      preLoaderRoute: typeof AppAuthorizationAuditRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/assistant': {
+      id: '/_app/authorization/assistant'
+      path: '/authorization/assistant'
+      fullPath: '/authorization/assistant'
+      preLoaderRoute: typeof AppAuthorizationAssistantRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/authorization/abac': {
+      id: '/_app/authorization/abac'
+      path: '/authorization/abac'
+      fullPath: '/authorization/abac'
+      preLoaderRoute: typeof AppAuthorizationAbacRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/auth/social': {
@@ -1678,6 +1951,19 @@ interface AppRouteChildren {
   AppAccessRelationshipsRoute: typeof AppAccessRelationshipsRoute
   AppAccessResourcesRoute: typeof AppAccessResourcesRoute
   AppAuthSocialRoute: typeof AppAuthSocialRoute
+  AppAuthorizationAbacRoute: typeof AppAuthorizationAbacRoute
+  AppAuthorizationAssistantRoute: typeof AppAuthorizationAssistantRoute
+  AppAuthorizationAuditRoute: typeof AppAuthorizationAuditRoute
+  AppAuthorizationBuilderRoute: typeof AppAuthorizationBuilderRoute
+  AppAuthorizationExplorerRoute: typeof AppAuthorizationExplorerRoute
+  AppAuthorizationPermissionsRoute: typeof AppAuthorizationPermissionsRoute
+  AppAuthorizationRbacRoute: typeof AppAuthorizationRbacRoute
+  AppAuthorizationRebacRoute: typeof AppAuthorizationRebacRoute
+  AppAuthorizationRolesRoute: typeof AppAuthorizationRolesRoute
+  AppAuthorizationSettingsRoute: typeof AppAuthorizationSettingsRoute
+  AppAuthorizationSimulatorRoute: typeof AppAuthorizationSimulatorRoute
+  AppAuthorizationTemplatesRoute: typeof AppAuthorizationTemplatesRoute
+  AppAuthorizationVersionsRoute: typeof AppAuthorizationVersionsRoute
   AppDeveloperAgentsRoute: typeof AppDeveloperAgentsRoute
   AppDeveloperAuthHooksRoute: typeof AppDeveloperAuthHooksRoute
   AppDeveloperBotsRoute: typeof AppDeveloperBotsRoute
@@ -1700,6 +1986,7 @@ interface AppRouteChildren {
   AppUsersImportRoute: typeof AppUsersImportRoute
   AppUsersInvitationsRoute: typeof AppUsersInvitationsRoute
   AppUsersSessionsRoute: typeof AppUsersSessionsRoute
+  AppAuthorizationIndexRoute: typeof AppAuthorizationIndexRoute
   AppGroupsIndexRoute: typeof AppGroupsIndexRoute
   AppSecurityIndexRoute: typeof AppSecurityIndexRoute
   AppUsersIndexRoute: typeof AppUsersIndexRoute
@@ -1753,6 +2040,19 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessRelationshipsRoute: AppAccessRelationshipsRoute,
   AppAccessResourcesRoute: AppAccessResourcesRoute,
   AppAuthSocialRoute: AppAuthSocialRoute,
+  AppAuthorizationAbacRoute: AppAuthorizationAbacRoute,
+  AppAuthorizationAssistantRoute: AppAuthorizationAssistantRoute,
+  AppAuthorizationAuditRoute: AppAuthorizationAuditRoute,
+  AppAuthorizationBuilderRoute: AppAuthorizationBuilderRoute,
+  AppAuthorizationExplorerRoute: AppAuthorizationExplorerRoute,
+  AppAuthorizationPermissionsRoute: AppAuthorizationPermissionsRoute,
+  AppAuthorizationRbacRoute: AppAuthorizationRbacRoute,
+  AppAuthorizationRebacRoute: AppAuthorizationRebacRoute,
+  AppAuthorizationRolesRoute: AppAuthorizationRolesRoute,
+  AppAuthorizationSettingsRoute: AppAuthorizationSettingsRoute,
+  AppAuthorizationSimulatorRoute: AppAuthorizationSimulatorRoute,
+  AppAuthorizationTemplatesRoute: AppAuthorizationTemplatesRoute,
+  AppAuthorizationVersionsRoute: AppAuthorizationVersionsRoute,
   AppDeveloperAgentsRoute: AppDeveloperAgentsRoute,
   AppDeveloperAuthHooksRoute: AppDeveloperAuthHooksRoute,
   AppDeveloperBotsRoute: AppDeveloperBotsRoute,
@@ -1775,6 +2075,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppUsersImportRoute: AppUsersImportRoute,
   AppUsersInvitationsRoute: AppUsersInvitationsRoute,
   AppUsersSessionsRoute: AppUsersSessionsRoute,
+  AppAuthorizationIndexRoute: AppAuthorizationIndexRoute,
   AppGroupsIndexRoute: AppGroupsIndexRoute,
   AppSecurityIndexRoute: AppSecurityIndexRoute,
   AppUsersIndexRoute: AppUsersIndexRoute,
