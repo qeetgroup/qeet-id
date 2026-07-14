@@ -3,26 +3,19 @@ import {
   BadgeCheckIcon,
   BlocksIcon,
   BotIcon,
-  BrainCircuitIcon,
   Building2Icon,
   ChartColumnIcon,
   CreditCardIcon,
   FingerprintIcon,
   FlaskConicalIcon,
   GaugeIcon,
-  HistoryIcon,
   KeyRoundIcon,
   LayoutDashboardIcon,
-  LayoutTemplateIcon,
   LockKeyholeIcon,
   LogInIcon,
   MonitorSmartphoneIcon,
-  NetworkIcon,
   PaletteIcon,
-  RadioTowerIcon,
-  ScanSearchIcon,
   ScrollTextIcon,
-  SearchCodeIcon,
   ServerCogIcon,
   Settings2Icon,
   ShieldAlertIcon,
@@ -40,7 +33,6 @@ export type NavItem = {
   title: string;
   url: string;
   icon?: ReactNode;
-  isActive?: boolean;
   items?: { title: string; url: string }[];
 };
 
@@ -51,20 +43,19 @@ export type NavGroup = {
 
 export const navGroups: NavGroup[] = [
   {
-    label: "Platform",
+    label: "Workspace",
     items: [
       {
-        title: "Dashboard",
+        title: "Overview",
         url: "/",
         icon: <LayoutDashboardIcon />,
-        isActive: true,
       },
       { title: "Activity", url: "/activity", icon: <ActivityIcon /> },
       { title: "Analytics", url: "/analytics", icon: <ChartColumnIcon /> },
     ],
   },
   {
-    label: "Identity & Access",
+    label: "Directory",
     items: [
       {
         title: "Users",
@@ -79,7 +70,7 @@ export const navGroups: NavGroup[] = [
       },
       {
         title: "Organizations",
-        url: "/organizations",
+        url: "/organizations/tenants",
         icon: <Building2Icon />,
         items: [
           { title: "Tenants", url: "/organizations/tenants" },
@@ -91,11 +82,64 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: "Authentication",
+    items: [
+      {
+        title: "Login methods",
+        url: "/auth/login-methods/password",
+        icon: <LogInIcon />,
+        items: [
+          { title: "Password", url: "/auth/login-methods/password" },
+          { title: "Passwordless", url: "/auth/login-methods/passwordless" },
+          { title: "Passkeys", url: "/auth/login-methods/passkeys" },
+          { title: "Magic links", url: "/auth/login-methods/magic-links" },
+        ],
+      },
+      {
+        title: "Connections",
+        url: "/auth/connections",
+        icon: <WorkflowIcon />,
+        items: [
+          { title: "Catalogue", url: "/auth/connections" },
+          { title: "Social providers", url: "/auth/social" },
+          { title: "SAML 2.0", url: "/auth/connections/saml" },
+          { title: "SAML IdP", url: "/auth/connections/saml-idp" },
+          { title: "OIDC / OAuth 2.0", url: "/auth/connections/oidc" },
+          { title: "SCIM provisioning", url: "/auth/connections/scim" },
+          { title: "LDAP / AD", url: "/auth/connections/ldap" },
+        ],
+      },
+      {
+        title: "Multi-factor auth",
+        url: "/auth/mfa/totp",
+        icon: <FingerprintIcon />,
+        items: [
+          { title: "TOTP", url: "/auth/mfa/totp" },
+          { title: "SMS / email", url: "/auth/mfa/sms-email" },
+          { title: "Recovery codes", url: "/auth/mfa/recovery-codes" },
+        ],
+      },
+      {
+        title: "API access",
+        url: "/auth/api/keys",
+        icon: <KeyRoundIcon />,
+        items: [
+          { title: "API keys", url: "/auth/api/keys" },
+          { title: "Machine identities", url: "/auth/api/machine-identities" },
+          { title: "Access tokens", url: "/auth/api/tokens" },
+          { title: "Consent grants", url: "/auth/api/consent-grants" },
+          { title: "Signing keys", url: "/auth/api/signing-keys" },
+          { title: "Secrets", url: "/auth/api/secrets" },
+        ],
+      },
+    ],
+  },
+  {
     label: "Authorization",
     items: [
       { title: "Overview", url: "/authorization", icon: <GaugeIcon /> },
       {
-        title: "Access Control",
+        title: "Access model",
         url: "/authorization/roles",
         icon: <ShieldCheckIcon />,
         items: [
@@ -107,119 +151,80 @@ export const navGroups: NavGroup[] = [
           { title: "ReBAC", url: "/authorization/rebac" },
         ],
       },
-      { title: "Policy Builder", url: "/authorization/builder", icon: <BlocksIcon /> },
-      { title: "Policy Simulator", url: "/authorization/simulator", icon: <FlaskConicalIcon /> },
-      { title: "Decision Explorer", url: "/authorization/explorer", icon: <SearchCodeIcon /> },
-      { title: "Access Tester", url: "/authorization/access-tester", icon: <ScanSearchIcon /> },
-      { title: "Version History", url: "/authorization/versions", icon: <HistoryIcon /> },
+      {
+        title: "Policy lifecycle",
+        url: "/authorization/builder",
+        icon: <BlocksIcon />,
+        items: [
+          { title: "Policy builder", url: "/authorization/builder" },
+          { title: "Templates", url: "/authorization/templates" },
+          { title: "Version history", url: "/authorization/versions" },
+        ],
+      },
+      {
+        title: "Decision tools",
+        url: "/authorization/simulator",
+        icon: <FlaskConicalIcon />,
+        items: [
+          { title: "Policy simulator", url: "/authorization/simulator" },
+          { title: "Decision explorer", url: "/authorization/explorer" },
+          { title: "Access tester", url: "/authorization/access-tester" },
+        ],
+      },
       { title: "Audit", url: "/authorization/audit", icon: <ScrollTextIcon /> },
-      { title: "Templates", url: "/authorization/templates", icon: <LayoutTemplateIcon /> },
-      { title: "AI Assistant", url: "/authorization/assistant", icon: <SparklesIcon /> },
+      { title: "AI assistant", url: "/authorization/assistant", icon: <SparklesIcon /> },
       { title: "Settings", url: "/authorization/settings", icon: <Settings2Icon /> },
     ],
   },
   {
-    label: "Authentication",
-    items: [
-      {
-        title: "Login Methods",
-        url: "/auth/login-methods",
-        icon: <LogInIcon />,
-        items: [
-          { title: "Password", url: "/auth/login-methods/password" },
-          { title: "Passwordless", url: "/auth/login-methods/passwordless" },
-          { title: "Passkeys", url: "/auth/login-methods/passkeys" },
-          { title: "Magic Links", url: "/auth/login-methods/magic-links" },
-        ],
-      },
-      { title: "Social Providers", url: "/auth/social", icon: <NetworkIcon /> },
-      {
-        title: "Multi-Factor Auth",
-        url: "/auth/mfa",
-        icon: <FingerprintIcon />,
-        items: [
-          { title: "TOTP", url: "/auth/mfa/totp" },
-          { title: "SMS / Email", url: "/auth/mfa/sms-email" },
-          { title: "Recovery Codes", url: "/auth/mfa/recovery-codes" },
-        ],
-      },
-      {
-        title: "Connections",
-        url: "/auth/connections",
-        icon: <WorkflowIcon />,
-        items: [
-          { title: "SAML 2.0", url: "/auth/connections/saml" },
-          { title: "SAML IdP", url: "/auth/connections/saml-idp" },
-          { title: "OIDC / OAuth 2.0", url: "/auth/connections/oidc" },
-          { title: "SCIM Provisioning", url: "/auth/connections/scim" },
-          { title: "LDAP / AD", url: "/auth/connections/ldap" },
-        ],
-      },
-      {
-        title: "API Keys & Tokens",
-        url: "/auth/api",
-        icon: <KeyRoundIcon />,
-        items: [
-          { title: "API Keys", url: "/auth/api/keys" },
-          { title: "Machine Identities", url: "/auth/api/machine-identities" },
-          { title: "Access Tokens", url: "/auth/api/tokens" },
-          { title: "Consent grants", url: "/auth/api/consent-grants" },
-          { title: "Signing keys", url: "/auth/api/signing-keys" },
-          { title: "Secrets", url: "/auth/api/secrets" },
-        ],
-      },
-    ],
-  },
-  {
-    label: "Security & Compliance",
+    label: "Security",
     items: [
       { title: "Overview", url: "/security", icon: <ShieldCheckIcon /> },
       {
-        title: "Threat Protection",
-        url: "/security/threats",
+        title: "Threat protection",
+        url: "/security/threats/bots",
         icon: <ShieldAlertIcon />,
         items: [
-          { title: "Bot Detection", url: "/security/threats/bots" },
+          { title: "Bot detection", url: "/security/threats/bots" },
           { title: "Anomalies", url: "/security/threats/anomalies" },
-          { title: "Risk Settings", url: "/security/threats/risk-settings" },
-          { title: "Rate Limits", url: "/security/threats/rate-limits" },
-          { title: "IP Allowlist", url: "/security/threats/ip-allowlist" },
+          { title: "Risk settings", url: "/security/threats/risk-settings" },
+          { title: "Threat rate limits", url: "/security/threats/rate-limits" },
+          { title: "IP allowlist", url: "/security/threats/ip-allowlist" },
         ],
       },
       {
-        title: "Device Authorizations",
-        url: "/security/device-authorizations",
+        title: "Sessions & devices",
+        url: "/security/sessions",
         icon: <MonitorSmartphoneIcon />,
+        items: [
+          { title: "Sessions", url: "/security/sessions" },
+          { title: "Device authorizations", url: "/security/device-authorizations" },
+        ],
       },
       {
-        title: "Rate Limit Policies",
+        title: "Rate limit policies",
         url: "/security/rate-limits",
         icon: <GaugeIcon />,
       },
       {
-        title: "Audit Logs",
+        title: "Monitoring",
         url: "/security/audit-logs",
         icon: <ScrollTextIcon />,
-      },
-      {
-        title: "Audit Intelligence",
-        url: "/security/audit-intelligence",
-        icon: <BrainCircuitIcon />,
-      },
-      {
-        title: "Log Streaming",
-        url: "/security/log-streaming",
-        icon: <RadioTowerIcon />,
+        items: [
+          { title: "Audit logs", url: "/security/audit-logs" },
+          { title: "Audit intelligence", url: "/security/audit-intelligence" },
+          { title: "Log streaming", url: "/security/log-streaming" },
+        ],
       },
       {
         title: "Compliance",
-        url: "/security/compliance",
+        url: "/security/compliance/soc2",
         icon: <LockKeyholeIcon />,
         items: [
           { title: "SOC 2", url: "/security/compliance/soc2" },
           { title: "GDPR", url: "/security/compliance/gdpr" },
           { title: "ISO 27001", url: "/security/compliance/iso27001" },
-          { title: "Data Retention", url: "/security/compliance/retention" },
+          { title: "Data retention", url: "/security/compliance/retention" },
         ],
       },
     ],
@@ -228,19 +233,19 @@ export const navGroups: NavGroup[] = [
     label: "Developer",
     items: [
       { title: "Webhooks", url: "/developer/webhooks", icon: <WebhookIcon /> },
-      { title: "Auth Hooks", url: "/developer/auth-hooks", icon: <ZapIcon /> },
+      { title: "Auth hooks", url: "/developer/auth-hooks", icon: <ZapIcon /> },
       {
-        title: "Agent Governance",
+        title: "Agent governance",
         url: "/developer/agents",
         icon: <SparklesIcon />,
       },
       {
-        title: "Verifiable Credentials",
+        title: "Verifiable credentials",
         url: "/developer/credentials",
         icon: <BadgeCheckIcon />,
       },
       {
-        title: "Bots & Automations",
+        title: "Bots & automations",
         url: "/developer/bots",
         icon: <BotIcon />,
       },
@@ -252,25 +257,25 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
-    label: "Settings",
+    label: "Administration",
     items: [
       {
         title: "Workspace",
-        url: "/settings/workspace",
+        url: "/settings/workspace/general",
         icon: <Settings2Icon />,
         items: [
           { title: "General", url: "/settings/workspace/general" },
-          { title: "Security Policy", url: "/settings/workspace/security-policy" },
+          { title: "Security policy", url: "/settings/workspace/security-policy" },
           { title: "Domains", url: "/settings/workspace/domains" },
           {
-            title: "Email Templates",
+            title: "Email templates",
             url: "/settings/workspace/email-templates",
           },
         ],
       },
       { title: "Branding", url: "/settings/branding", icon: <PaletteIcon /> },
       {
-        title: "Billing & Plan",
+        title: "Billing & plan",
         url: "/settings/billing",
         icon: <CreditCardIcon />,
       },
