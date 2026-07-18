@@ -25,10 +25,16 @@
     "check": "biome check --diagnostic-level=error .",
     "typecheck": "bun run --filter './apps/*' typecheck",
     "test": "bun run --filter './apps/*' test",
-    "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist apps/*/.netlify apps/*/.output"
+    "clean": "rm -rf node_modules apps/*/node_modules apps/*/dist apps/*/.netlify apps/*/.output",
+    "generate:tree": "struct -i node_modules -i .next -i .output -i dist -i target -i bin -i playwright-report -i bun.lock -i go.sum -i src -i dbgen -i locales -d -o project.tree",
+    "generate:tree:console": "struct -i node_modules -i .output -i dist -o apps/console/project.tree apps/console",
+    "generate:tree:login": "struct -i node_modules -i .next -o apps/login/project.tree apps/login",
+    "generate:tree:website": "struct -i node_modules -i .next -o apps/website/project.tree apps/website",
+    "generate:tree:all": "bun run generate:tree && bun run generate:tree:console && bun run generate:tree:login && bun run generate:tree:website"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",
+    "@structure-codes/cli": "^0.0.6",
     "typescript": "^7.0.2"
   }
 }
