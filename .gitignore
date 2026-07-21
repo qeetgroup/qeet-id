@@ -44,16 +44,6 @@ graphify-out/
 *.out
 coverage.html
 
-# JS/Node — deps, stores, build outputs (merged from frontend/.gitignore on hoist)
-node_modules/
-dist/
-build/
-.next/
-.nitro/
-.output/
-.tanstack/
-coverage/
-
 # Env / secrets — never commit (but keep .env*.example templates)
 .env
 .env.local
@@ -61,11 +51,6 @@ coverage/
 .env.prod
 .env.staging
 .env.production
-# …but the frontend apps' .env.production hold only PUBLIC NEXT_PUBLIC_/VITE_
-# build-time config (no secrets) — version-control them.
-!apps/website/.env.production
-!apps/console/.env.production
-!apps/login/.env.production
 *.pem
 *.key
 *.crt
@@ -78,13 +63,9 @@ coverage/
 # Logs
 *.log
 logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
 # Tooling caches
 .cache/
-*.tsbuildinfo
 
 # OS / archive
 *.tar

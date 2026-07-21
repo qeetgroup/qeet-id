@@ -7,18 +7,6 @@
 .gitignore
 .gitattributes
 
-# JS / frontend workspace — never needed by the Go binary build
-node_modules/
-apps/
-packages/
-package.json
-bun.lock
-biome.json
-.npmrc
-.next/
-dist/
-*.tsbuildinfo
-
 # Infra / deploy / docs / codegen inputs / tests — not needed to build the binary
 # (platform/database/migrations IS kept: embedded via //go:embed at compile time)
 deploy/

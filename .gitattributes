@@ -3,12 +3,6 @@
 
 # ── Source code (always LF) ────────────────────────────────────────────────
 *.go        text eol=lf
-*.ts        text eol=lf
-*.tsx       text eol=lf
-*.js        text eol=lf
-*.jsx       text eol=lf
-*.mjs       text eol=lf
-*.cjs       text eol=lf
 *.json      text eol=lf
 *.jsonc     text eol=lf
 *.yaml      text eol=lf
@@ -16,7 +10,6 @@
 *.toml      text eol=lf
 *.sql       text eol=lf
 *.sh        text eol=lf
-*.mdx       text eol=lf
 
 # Docs / config
 *.md        text eol=lf
@@ -27,9 +20,6 @@ Makefile    text eol=lf
 
 # ── Lockfiles ─ vendored output, exclude from rebases / diff-noise ─────────
 go.sum               text eol=lf -diff
-bun.lock             text eol=lf -diff
-package-lock.json    text eol=lf -diff
-yarn.lock            text eol=lf -diff
 
 # ── Binary assets ──────────────────────────────────────────────────────────
 *.png    binary
@@ -51,12 +41,7 @@ yarn.lock            text eol=lf -diff
 *.eot    binary
 
 # ── Generated / vendored — collapse in diffs ───────────────────────────────
-**/.source/**             linguist-generated
-**/routeTree.gen.ts       linguist-generated
 **/*.gen.go               linguist-generated
 
 # ── Vendored docs that aren't ours ─────────────────────────────────────────
 documents/source-requirements/** linguist-vendored
-
-# ── Hide marketing / docs static content from language stats ───────────────
-apps/docs/** linguist-documentation

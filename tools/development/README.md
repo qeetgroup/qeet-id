@@ -8,8 +8,8 @@ Development environment setup, editor configs, and local tooling.
 ./tools/development/setup.sh
 ```
 
-Installs: Go 1.25, Bun 1.3.14, golang-migrate, k6, semgrep,
-govulncheck, Playwright browsers.
+Installs: Go 1.25, golang-migrate, k6, semgrep, govulncheck, and Bun
+(runtime for the Newman/Postman API-contract runner).
 
 ## Contents
 

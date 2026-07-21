@@ -1,6 +1,6 @@
 # Contributing to Qeet ID
 
-Thanks for considering a contribution. This guide covers branching, commits, code style, and how to add new features across the monorepo.
+Thanks for considering a contribution. This guide covers branching, commits, code style, and how to add new features to the backend.
 
 If you're reporting a security issue, please follow [SECURITY.md](./SECURITY.md) instead of opening an issue.
 
@@ -34,11 +34,8 @@ Security issues do **not** go here — follow [SECURITY.md](./SECURITY.md).
 See the [Quickstart in the root README](./README.md#quickstart). In short:
 
 ```bash
-# Backend (from the repo root — single Go module)
-make db-up && make migrate-up && make dev-backend
-
-# Frontend (from the repo root — Bun workspace)
-bun install && bun run dev
+# From the repo root — single Go module
+make db-up && make migrate-up && make dev
 ```
 
 ---
@@ -92,11 +89,8 @@ Why this matters: commit history feeds the changelog. Vague commits → vague re
 3. **Run the local checks** before opening the PR:
 
    ```bash
-   # Backend (from the repo root)
-   make test-backend && go vet ./...
-
-   # Frontend (from the repo root)
-   bun run typecheck && bun run lint && bun run test
+   # From the repo root — single Go module
+   make test && go vet ./...
    ```
 
 4. **Open the PR** against `develop`. Fill in the template (`.github/PULL_REQUEST_TEMPLATE.md`).
@@ -138,24 +132,9 @@ Steps to add a module:
 
 ---
 
-## Adding a frontend route or component
-
-Admin console uses file-based routing under [apps/console/src/routes/](./apps/console/src/routes/). To add a screen:
-
-1. Create the route file under `src/routes/_app/<feature>.tsx` (the `_app` layout adds the sidebar / auth gate).
-2. Add the nav entry in [src/config/navigation.tsx](./apps/console/src/config/navigation.tsx).
-3. Use components from the shared `@qeetrix/*` design system — only add new primitives there if reused across apps.
-4. Wire data via TanStack Query against the backend API.
-5. Add tests using Vitest + Testing Library.
-
-For the marketing site ([apps/website](./apps/website/)) and hosted login ([apps/login](./apps/login/)), use Next.js file-based routing under each app's `src/app/`.
-
----
-
 ## Code style
 
 - **Go:** gofmt-clean. `go vet` clean. Use the existing patterns in `internal/platform/` (errors, logging, HTTP middleware).
-- **TypeScript:** Biome-formatted. Biome lint clean. No `any` without a justification comment.
 - **SQL:** lowercase keywords (`select`, not `SELECT`). Migrations are immutable once merged — don't edit them in place; write a new one.
 - **Comments:** the [root README and CLAUDE-style guidance](./README.md) apply — only write a comment when the *why* is non-obvious. Don't restate what the code does.
 
