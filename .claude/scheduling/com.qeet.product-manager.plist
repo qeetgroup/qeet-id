@@ -3,9 +3,9 @@
 <!--
   launchd job: runs the Qeet ID product-manager agent at 09:00, 13:00, 20:00 local time (IST).
   Install (one-time):
-    cp qeet-id/.claude/scheduling/com.qeet.product-manager.plist ~/Library/LaunchAgents/
+    cp qeet-servers/qeet-id-server/.claude/scheduling/com.qeet.product-manager.plist ~/Library/LaunchAgents/
     launchctl load -w ~/Library/LaunchAgents/com.qeet.product-manager.plist
-  See qeet-id/.claude/README.md.
+  See qeet-servers/qeet-id-server/.claude/README.md.
 -->
 <plist version="1.0">
 <dict>
@@ -15,7 +15,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/a3097640/Desktop/QG/qeet-id/.claude/scripts/run-product-manager.sh</string>
+        <string>/Users/a3097640/Desktop/QG/qeet-servers/qeet-id-server/.claude/scripts/run-product-manager.sh</string>
     </array>
 
     <!-- 09:00, 13:00, 20:00 local time. launchd uses the system timezone (IST). -->
@@ -48,9 +48,9 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/a3097640/Desktop/QG/qeet-id/.claude/logs/launchd.out.log</string>
+    <string>/Users/a3097640/Desktop/QG/qeet-servers/qeet-id-server/.claude/logs/launchd.out.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/a3097640/Desktop/QG/qeet-id/.claude/logs/launchd.err.log</string>
+    <string>/Users/a3097640/Desktop/QG/qeet-servers/qeet-id-server/.claude/logs/launchd.err.log</string>
 
     <key>ProcessType</key>
     <string>Background</string>

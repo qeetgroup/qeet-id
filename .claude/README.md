@@ -45,16 +45,16 @@ proposals into the PRD hub so Qeet ID can support every feature worth having. Yo
 Default is a **comprehensive full sweep** of the whole landscape; you can scope to one focus to save time/cost:
 ```bash
 # comprehensive full sweep across the entire landscape (default)
-bash qeet-id/.claude/scripts/run-product-manager.sh
+bash qeet-servers/qeet-id-server/.claude/scripts/run-product-manager.sh
 
 # scope to one focus: auth | enterprise | agent | pam | decentralized
-bash qeet-id/.claude/scripts/run-product-manager.sh agent
+bash qeet-servers/qeet-id-server/.claude/scripts/run-product-manager.sh agent
 
 # deeper run on a stronger model
-PM_MODEL=opus bash qeet-id/.claude/scripts/run-product-manager.sh enterprise
+PM_MODEL=opus bash qeet-servers/qeet-id-server/.claude/scripts/run-product-manager.sh enterprise
 
 # watch it / read results
-tail -f qeet-id/.claude/logs/run-*.log
+tail -f qeet-servers/qeet-id-server/.claude/logs/run-*.log
 open ../../qeet-files/qeet-id/FEATURE-CATALOG.md
 ```
 It runs to completion in the foreground (a sweep takes a few minutes) and writes to `qeet-files/qeet-id/`. Requires the Full Disk Access grant below (the binaries already have it).
@@ -62,7 +62,7 @@ It runs to completion in the foreground (a sweep takes a few minutes) and writes
 ### Optional: re-enable a recurring schedule (NOT installed)
 Not active — you chose manual-only. If you ever want it back, a launchd template is kept at `scheduling/com.qeet.product-manager.plist` (fires 09:00/13:00/20:00 IST):
 ```bash
-cp qeet-id/.claude/scheduling/com.qeet.product-manager.plist ~/Library/LaunchAgents/
+cp qeet-servers/qeet-id-server/.claude/scheduling/com.qeet.product-manager.plist ~/Library/LaunchAgents/
 launchctl load -w ~/Library/LaunchAgents/com.qeet.product-manager.plist   # install
 launchctl unload -w ~/Library/LaunchAgents/com.qeet.product-manager.plist # uninstall
 ```

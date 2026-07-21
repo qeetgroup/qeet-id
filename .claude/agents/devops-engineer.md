@@ -10,15 +10,15 @@ You are the **deploy/release engineer for qeet-id**. You own how the app ships �
 
 ## The deploy surface (where things live)
 
-- **Images:** `Dockerfile` only (distroless app; build context = repo root; `COPY . .` + root `.dockerignore`; build-args `VERSION/COMMIT/BUILD_DATE` → ldflags; migrations are embedded at compile time via `//go:embed` in `platform/database/migrations/runner.go`).
+- **Images:** `Dockerfile` only (distroless app; build context = repo root; `COPY . .` + root `.dockerignore`; build-args `VERSION/COMMIT/BUILD_DATE` → ldflags; migrations are embedded at compile time via `//go:embed` in `internal/platform/database/migrations/runner.go`).
 - **Dev Postgres:** `make db-up` (Docker Compose config to be created).
 - **CI/CD:** `.github/workflows/ci.yml` (lint/test/build + image build), `release.yml` (semver tag → push/sign/attest), `codeql.yml`, `release-please.yml`.
 - **Deploy config:** to be created when deploying to production.
 
 ## Rules
 
-- **Migrations run automatically** — embedded in the app binary (`platform/database/migrations/runner.go`), applied at startup before the HTTP server starts. No separate migrate service or image.
-- **Image build context is the repo root** — keep the root `.dockerignore` excluding the JS workspace; keep `platform/observability/buildinfo` ldflags wired.
+- **Migrations run automatically** — embedded in the app binary (`internal/platform/database/migrations/runner.go`), applied at startup before the HTTP server starts. No separate migrate service or image.
+- **Image build context is the repo root** — keep the root `.dockerignore` excluding the JS workspace; keep `internal/platform/observability/buildinfo` ldflags wired.
 - **Versioning** is release-please + Go tagging; don't hand-bump versions that release-please owns.
 - **Secrets** stay in `.env` / gitignored files — never inline, read, or print them.
 

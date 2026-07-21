@@ -30,7 +30,7 @@ flowchart TB
     issue["GitHub Issue on the roadmap board (Project #24)"]
     backend["backend-engineer"]
     frontend["frontend-engineer"]
-    qa["qa-test-engineer<br/>(suite green: build + vet + go test + arch + coverage + bun run test)"]
+    qa["qa-test-engineer<br/>(suite green: build + vet + go test + arch + bun run test)"]
     security["security-reviewer<br/>(IAM audit of the diff → engineers fix findings)"]
     review["/code-review + /verify<br/>(general correctness + does-it-run)"]
     docs["docs-writer<br/>(docs + flip proposal to Status: done,<br/>update ROADMAP.md ✅ Shipped section)"]
@@ -62,7 +62,7 @@ Or step by step, reviewing each hand-off. Run one feature at a time.
 ## Definition of done
 - `go build ./... && go vet ./... && go test ./...` green
 - `go test -count=1 ./tests/architecture/...` green (arch boundaries)
-- OpenAPI coverage test green (`api/openapi/` documents every route)
+- Every new/changed route documented in `api/openapi/` and mounted in `internal/bootstrap/router.go` (manual check — no automated coverage test)
 - `bun run typecheck && bun run lint && bun run test` green (if frontend touched)
 - `make test-integration` green (if Docker available)
 - security-reviewer findings resolved (no open Critical/High)

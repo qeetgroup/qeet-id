@@ -26,7 +26,7 @@ It writes to:
 
 ## ⭐ Easiest way — double-click (no typing)
 
-1. In **Finder**, go to: `Desktop → QG → qeet-id → .claude → scripts`
+1. In **Finder**, go to: `Desktop → QG → qeet-servers → qeet-id-server → .claude → scripts`
    - (`.claude` is a hidden folder. If you don't see it, press **⌘ + Shift + .** to show hidden files.)
 2. Double-click **`Run Qeet PM.command`**.
 3. A black Terminal window opens and asks **what to research** — type `1`–`4` (or just press **Enter** for "Everything") and hit Enter.
@@ -43,7 +43,7 @@ It writes to:
 1. Open **Terminal** (press **⌘ + Space**, type `Terminal`, press Enter).
 2. Copy–paste this line and press Enter:
    ```bash
-   bash ~/Desktop/QG/qeet-id/.claude/scripts/run-product-manager.sh
+   bash ~/Desktop/QG/qeet-servers/qeet-id-server/.claude/scripts/run-product-manager.sh
    ```
 3. Wait a few minutes. It prints a summary when done.
 4. Read the findings:
@@ -55,9 +55,9 @@ It writes to:
 ### Research just one topic (faster / cheaper)
 Add one word at the end:
 ```bash
-bash ~/Desktop/QG/qeet-id/.claude/scripts/run-product-manager.sh auth
-bash ~/Desktop/QG/qeet-id/.claude/scripts/run-product-manager.sh enterprise
-bash ~/Desktop/QG/qeet-id/.claude/scripts/run-product-manager.sh agent
+bash ~/Desktop/QG/qeet-servers/qeet-id-server/.claude/scripts/run-product-manager.sh auth
+bash ~/Desktop/QG/qeet-servers/qeet-id-server/.claude/scripts/run-product-manager.sh enterprise
+bash ~/Desktop/QG/qeet-servers/qeet-id-server/.claude/scripts/run-product-manager.sh agent
 ```
 | word | covers |
 |---|---|
@@ -69,7 +69,7 @@ bash ~/Desktop/QG/qeet-id/.claude/scripts/run-product-manager.sh agent
 ### Want a deeper, sharper analysis?
 Put `PM_MODEL=opus` in front (slower, costs more, higher quality):
 ```bash
-PM_MODEL=opus bash ~/Desktop/QG/qeet-id/.claude/scripts/run-product-manager.sh agent
+PM_MODEL=opus bash ~/Desktop/QG/qeet-servers/qeet-id-server/.claude/scripts/run-product-manager.sh agent
 ```
 
 ---
@@ -86,7 +86,7 @@ PM_MODEL=opus bash ~/Desktop/QG/qeet-id/.claude/scripts/run-product-manager.sh a
 - **`Operation not permitted`** → macOS needs **Full Disk Access** for the workspace (it lives under `~/Desktop`). Grant it once: **System Settings → Privacy & Security → Full Disk Access → +** and add **`/bin/bash`** and **`/Users/a3097640/.local/bin/claude`**, toggle both ON. (Already done? Then ignore this.)
 - **Nothing written / errors** → check the latest log:
   ```bash
-  ls -t ~/Desktop/QG/qeet-id/.claude/logs/run-*.log | head -1 | xargs cat
+  ls -t ~/Desktop/QG/qeet-servers/qeet-id-server/.claude/logs/run-*.log | head -1 | xargs cat
   ```
 
 ## Don't want to use Terminal at all?
@@ -100,14 +100,14 @@ Once the product-manager has filled `FEATURE-PROPOSALS.md`, this team turns a pr
 real, tested, security-reviewed code. **You don't run a script for this — you chat with Claude**
 and it drives the agents. (Full details: [PIPELINE.md](PIPELINE.md).)
 
-### Step 1 — open Claude in the qeet-id folder
+### Step 1 — open Claude in the qeet-id-server folder
 In a Terminal:
 ```bash
-cd ~/Desktop/QG/qeet-id
+cd ~/Desktop/QG/qeet-servers/qeet-id-server
 claude
 ```
 (Or open the folder in the Claude Code VS Code extension / desktop app.) Opening it **inside
-`qeet-id`** is what makes the build agents available.
+`qeet-id-server`** is what makes the build agents available.
 
 ### Step 2 — pick a proposal
 Open `~/Desktop/QG/qeet-files/qeet-id/FEATURE-PROPOSALS.md` and note an ID, e.g. **FP-013**.
