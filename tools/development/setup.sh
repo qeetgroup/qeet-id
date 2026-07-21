@@ -12,15 +12,11 @@ if ! go version 2>/dev/null | grep -q "go1.25"; then
 fi
 ok "$(go version)"
 
-info "Bun (JS runtime + package manager)"
+info "Bun (runtime for the Newman/Postman API-contract runner — api/postman/run.sh)"
 if ! command -v bun &>/dev/null; then
   brew install bun
 fi
 ok "$(bun --version)"
-
-info "Workspace dependencies (bun install)"
-bun install
-ok "dependencies installed"
 
 info "golang-migrate"
 brew install golang-migrate
@@ -40,9 +36,5 @@ info "govulncheck (Go vulnerability scanner)"
 go install golang.org/x/vuln/cmd/govulncheck@latest
 ok "govulncheck installed"
 
-info "Playwright browsers"
-bunx playwright install --with-deps 2>/dev/null || true
-ok "Playwright ready"
-
 echo ""
-echo "Setup complete. Backend: make db-up migrate-up && make dev  ·  Frontends: bun run dev"
+echo "Setup complete. Run: make db-up migrate-up && make dev"

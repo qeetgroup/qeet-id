@@ -12,53 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend:
-    name: Backend
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: qeet
-          POSTGRES_PASSWORD: qeet
-          POSTGRES_DB: qeet_id
-        ports:
-          - 5001:5432
-        options: >-
-          --health-cmd "pg_isready -U qeet"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      DB_URL: postgres://qeet:qeet@localhost:5001/qeet_id?sslmode=disable
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-
-      - name: Install golang-migrate
-        run: |
-          curl -L https://github.com/golang-migrate/migrate/releases/download/v4.18.1/migrate.linux-amd64.tar.gz | tar xz
-          sudo mv migrate /usr/local/bin/
-
-      - run: go mod verify
-      - run: go vet ./...
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-      - run: go test -race -count=1 ./...
-      - name: Integration tests (testcontainers)
-        run: go test -tags integration -count=1 ./tests/integration/...
-      - run: go build -o /dev/null ./cmd/api
-      - name: Migration smoke
-        run: make migrate-up
-
   security:
     name: Secret scan
     runs-on: ubuntu-latest

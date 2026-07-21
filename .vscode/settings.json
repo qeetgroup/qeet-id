@@ -1,31 +1,15 @@
 {
   "editor.formatOnSave": true,
   "editor.codeActionsOnSave": {
-    "source.organizeImports": "explicit",
-    "source.fixAll.biome": "explicit"
+    "source.organizeImports": "explicit"
   },
   "files.eol": "\n",
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
   "files.exclude": {
-    "**/.next": true,
-    "**/.source": true,
-    "**/.output": true,
-    "**/.netlify": true,
-    "**/.vercel": true,
-    "**/dist": true,
-    "**/coverage": true,
-    "**/node_modules": true,
     "**/bin": true
   },
   "search.exclude": {
-    "**/node_modules": true,
-    "**/.next": true,
-    "**/.source": true,
-    "**/.output": true,
-    "**/dist": true,
-    "**/coverage": true,
-    "**/bun.lock": true,
     "**/go.sum": true
   },
 
@@ -39,22 +23,6 @@
   "go.lintTool": "golangci-lint",
   "go.lintOnSave": "workspace",
   "go.testFlags": ["-race", "-count=1"],
-
-  // ── TypeScript / JS ──────────────────────────────────────────────────────
-  "[typescript]": { "editor.defaultFormatter": "biomejs.biome" },
-  "[typescriptreact]": { "editor.defaultFormatter": "biomejs.biome" },
-  "[javascript]": { "editor.defaultFormatter": "biomejs.biome" },
-  "[javascriptreact]": { "editor.defaultFormatter": "biomejs.biome" },
-  "[json]": { "editor.defaultFormatter": "biomejs.biome" },
-  "[jsonc]": { "editor.defaultFormatter": "biomejs.biome" },
-  "[css]": { "editor.defaultFormatter": "biomejs.biome" },
-
-  // ── Tailwind ─────────────────────────────────────────────────────────────
-  "tailwindCSS.experimental.classRegex": [
-    ["cva\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
-    ["cn\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"],
-    ["clsx\\(([^)]*)\\)", "[\"'`]([^\"'`]*).*?[\"'`]"]
-  ],
 
   // ── SQL (migrations) ─────────────────────────────────────────────────────
   "[sql]": { "editor.tabSize": 4 }

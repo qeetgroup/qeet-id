@@ -21,9 +21,9 @@
 
 <div align="center">
 
-| 🏗 Single deployable | 🔌 ~200 API routes | 🖥 3 React frontends | 📦 3 SDKs | 🗄 81 migrations |
+| 🏗 Single deployable | 🔌 ~200 API routes | 🧩 5 bounded contexts | 📦 3 SDKs | 🗄 81 migrations |
 |:---:|:---:|:---:|:---:|:---:|
-| Go modular monolith | 5 OpenAPI 3.1 specs | Admin · Login · Website | TS (Node) · React · Go | 6 Postgres schemas |
+| Go modular monolith | 5 OpenAPI 3.1 specs | access · identity · federation · developer · operations | TS (Node) · React · Go | 6 Postgres schemas |
 
 </div>
 
@@ -42,7 +42,7 @@
 | 📜 **Tamper-evident audit** | SHA-256 hash-chained log with a `/verify` integrity walk |
 | 💳 **Billing built-in** | Multi-currency, Stripe (global) + Razorpay (India) |
 | 🌍 **Open & self-hostable** | MIT-licensed, single Go binary — no vendor lock-in |
-| 🧰 **Batteries included** | 3 frontends + 3 first-party SDKs + hosted login |
+| 🧰 **Batteries included** | 3 first-party SDKs (TS · React · Go) + OpenAPI 3.1 specs + Postman collection |
 
 <details>
 <summary><b>📊 Full comparison vs Auth0 · Okta · Clerk · Supabase · better-auth</b></summary>
@@ -75,11 +75,6 @@ A **single deployable** Go module — five bounded contexts over shared infrastr
 flowchart TB
     clients["End users · Admins · Developers<br/>Browsers · SDKs · AI agents · service accounts"]
 
-    subgraph frontends["Frontends"]
-        direction LR
-        login["Hosted Login<br/>Next.js · :3003"]
-    end
-
     subgraph api["Go API · chi v5 · cmd/api · :4001"]
         mw["Middleware: RequestID → RealIP → Recoverer → SecurityHeaders<br/>→ AccessLog → Tracing → Metrics → CSRF → CORS → authz"]
         subgraph domains["internal/ — five bounded contexts"]
@@ -97,8 +92,7 @@ flowchart TB
     pg[("PostgreSQL 16 · pgx v5<br/>6 schemas · multi-tenant by tenant_id<br/>optional Redis rate-limit")]
     egress["Egress · SMTP · HIBP · Webhooks<br/>SIEM stream · Payments<br/>(transactional outbox)"]
 
-    clients --> login
-    login --> mw
+    clients --> mw
     platform --> pg
     platform --> egress
 ```
@@ -115,7 +109,7 @@ flowchart TB
 
 ## 🧩 Features
 
-> **The full v1 surface is built and working** — every endpoint implemented (no stubs), every ✅ admin screen wired to a live API, marketing site + hosted login complete.
+> **The full v1 API surface is built and working** — every endpoint implemented, no stubs.
 
 - 🔑 **Authentication** — email+password (Argon2id), passkeys/WebAuthn, magic links, email/SMS OTP, social, MFA (TOTP + recovery codes), HIBP breach check
 - 🏢 **Enterprise SSO** — OIDC/OAuth 2.0 provider, Device grant (RFC 8628), Token Exchange (RFC 8693), SAML SP+IdP, SCIM 2.0, LDAP/AD
@@ -166,7 +160,7 @@ All planned packages/surfaces are tracked in [ROADMAP.md](./ROADMAP.md).
 
 ## 🚀 Quickstart
 
-**Prerequisites:** Go ≥ 1.25 · Bun ≥ 1.3.14 · Docker · [golang-migrate CLI](https://github.com/golang-migrate/migrate/tree/master/cmd/migrate)
+**Prerequisites:** Go ≥ 1.25 · Docker · [golang-migrate CLI](https://github.com/golang-migrate/migrate/tree/master/cmd/migrate)
 
 ```bash
 # 1. Clone

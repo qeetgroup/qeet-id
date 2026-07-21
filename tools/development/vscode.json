@@ -11,19 +11,10 @@
       "source.organizeImports": "explicit"
     }
   },
-  "typescript.tsdk": "node_modules/typescript/lib",
-  "editor.defaultFormatter": "biomejs.biome",
-  "[typescript]": { "editor.defaultFormatter": "biomejs.biome" },
-  "[typescriptreact]": { "editor.defaultFormatter": "biomejs.biome" },
   "files.exclude": {
-    "**/node_modules": true,
-    "**/dist": true,
-    "**/.next": true,
     "**/bin": true
   },
   "search.exclude": {
-    "**/node_modules": true,
-    "**/dist": true,
     "internal/platform/database/sqlc/*.go": true
   }
 }

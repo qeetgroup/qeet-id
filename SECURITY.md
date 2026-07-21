@@ -42,7 +42,7 @@ We will keep you informed throughout triage and remediation, and credit you (if 
 ## Scope
 
 **In scope:**
-- This repository (`qeet-id`) — backend, frontend, and infrastructure code
+- This repository (`qeet-id-server`) — the Go backend and its infrastructure code
 - Anything that ships from `main` to production
 - Authentication, authorization, session management, token issuance / validation, MFA, passkeys, SAML/OIDC handlers, SCIM, audit logging
 
@@ -74,7 +74,7 @@ A formal bug bounty program will launch alongside v1.0. Until then, we handle re
 If you are deploying Qeet ID yourself, please also:
 - Run TLS 1.2+ on every public endpoint
 - Rotate the JWT signing key set every 90 days
-- Keep dependencies current — `go.mod` and `bun.lock` are version-pinned for reproducibility, not because they should stay stale
+- Keep dependencies current — `go.mod` / `go.sum` are version-pinned for reproducibility, not because they should stay stale
 - Enable WAF / DDoS protection at the edge (Cloudflare, AWS Shield)
 - Follow a deploy runbook and secrets generation guide before going to production
 

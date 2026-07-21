@@ -31,7 +31,7 @@ semgrep --config p/owasp-top-ten ./domains/ ./platform/
 
 ```bash
 # All security tests (requires running backend)
-make db-up migrate-up && make dev-backend &
+make db-up migrate-up && make dev &
 go test ./tests/security/... -v -timeout 60s
 ```
 
@@ -52,9 +52,5 @@ docker run -t ghcr.io/zaproxy/zaproxy:stable zap-full-scan.py \
 ## Dependency vulnerability scan
 
 ```bash
-# Go
 govulncheck ./...
-
-# Node
-bun audit --audit-level=high
 ```
